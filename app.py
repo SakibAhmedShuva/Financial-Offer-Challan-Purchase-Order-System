@@ -45,6 +45,7 @@ CONFIG = {
     'ASSETS_DIR': 'assets',
     'COVERS_DIR': os.path.join('assets', 'covers'),
     'THUMBNAILS_DIR': os.path.join('assets', 'covers', 'thumbnails'),
+    'CHAT_ATTACHMENTS_DIR': os.path.join('data_storage', 'chat_attachments'), # ADDED: For chat files
     'USERS_FILE': 'users.csv',
     'CLIENTS_FILE': 'clients.csv',
     'ACTIVITY_LOG_FILE': 'activity_log.csv',
@@ -86,6 +87,7 @@ def setup_directories_and_files():
     os.makedirs(CONFIG['ASSETS_DIR'], exist_ok=True)
     os.makedirs(CONFIG['COVERS_DIR'], exist_ok=True)
     os.makedirs(CONFIG['THUMBNAILS_DIR'], exist_ok=True)
+    os.makedirs(CONFIG['CHAT_ATTACHMENTS_DIR'], exist_ok=True) # ADDED
     
     global users_df, clients_df
     users_filepath = os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE'])
@@ -1358,6 +1360,41 @@ def convert_to_words_endpoint():
     })
 
 # --- SocketIO Chat Handlers ---
+# ADDED: Endpoint to upload chat files
+@app.route('/upload_chat_attachment', methods=['POST'])
+def upload_chat_attachment():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'}), 400
+    
+    try:
+        original_filename = secure_filename(file.filename)
+        file_ext = os.path.splitext(original_filename)[1]
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        save_path = os.path.join(CONFIG['CHAT_ATTACHMENTS_DIR'], unique_filename)
+        file.save(save_path)
+        
+        file_url = f"/chat_attachment/{unique_filename}"
+        
+        return jsonify({
+            'success': True, 
+            'url': file_url, 
+            'filename': original_filename
+        })
+    except Exception as e:
+        print(f"Error uploading chat file: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ADDED: Endpoint to serve uploaded chat files
+@app.route('/chat_attachment/<path:filename>')
+def get_chat_attachment(filename):
+    try:
+        return send_from_directory(CONFIG['CHAT_ATTACHMENTS_DIR'], filename)
+    except FileNotFoundError:
+        return "File not found.", 404
+
 @socketio.on('connect')
 def handle_connect():
     print(f"Client connected: {request.sid}")
@@ -1394,10 +1431,11 @@ def handle_disconnect():
             online_user_emails = list(online_users.keys())
             emit('update_user_list', {'all_users': all_users_list, 'online_users': online_user_emails}, broadcast=True)
 
+# MODIFIED: Chat handler to support structured messages (text or file)
 @socketio.on('private_message')
 def handle_private_message(data):
     recipient_email = data.get('recipient_email')
-    message = data.get('message')
+    message_obj = data.get('message') # This is now an object
     
     sender_email = None
     for email, sid in online_users.items():
@@ -1405,15 +1443,15 @@ def handle_private_message(data):
             sender_email = email
             break
             
-    if sender_email and recipient_email and message:
+    if sender_email and recipient_email and message_obj:
         timestamp = datetime.now().isoformat()
         message_id = str(uuid.uuid4())
 
-        # Save message to history
+        # Save message object to history as a JSON string
         try:
             with open(os.path.join(CONFIG['DATA_DIR'], CONFIG['CHAT_HISTORY_FILE']), 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow([message_id, sender_email, recipient_email, message, timestamp])
+                writer.writerow([message_id, sender_email, recipient_email, json.dumps(message_obj), timestamp])
         except Exception as e:
             print(f"Error saving chat message: {e}")
 
@@ -1421,16 +1459,17 @@ def handle_private_message(data):
         
         message_payload = {
             'sender_email': sender_email,
-            'message': message,
+            'message': message_obj,
             'timestamp': timestamp
         }
 
         if recipient_sid:
             emit('new_message', message_payload, to=recipient_sid)
 
-        message_payload['recipient_email'] = recipient_email
-        emit('new_message', message_payload, to=request.sid)
+        # Send confirmation back to sender
+        emit('new_message', {**message_payload, 'recipient_email': recipient_email}, to=request.sid)
 
+# MODIFIED: History endpoint to parse JSON messages
 @app.route('/chat_history/<user1_email>/<user2_email>')
 def get_chat_history(user1_email, user2_email):
     history = []
@@ -1441,8 +1480,18 @@ def get_chat_history(user1_email, user2_email):
             conversation = df[
                 ((df['sender_email'] == user1_email) & (df['recipient_email'] == user2_email)) |
                 ((df['sender_email'] == user2_email) & (df['recipient_email'] == user1_email))
-            ]
+            ].copy()
+            
+            def parse_message(msg):
+                try:
+                    return json.loads(msg)
+                except (json.JSONDecodeError, TypeError):
+                    # Fallback for old plain-text messages
+                    return {'type': 'text', 'content': msg}
+
+            conversation['message'] = conversation['message'].apply(parse_message)
             history = conversation.sort_values(by='timestamp').to_dict('records')
+
     except Exception as e:
         print(f"Error fetching chat history: {e}")
         return jsonify({'success': False, 'message': 'Could not fetch history'}), 500
