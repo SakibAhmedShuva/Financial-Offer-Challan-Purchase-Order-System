@@ -610,8 +610,10 @@ def save_project():
     elif project_type == 'po':
          project_data.update({
             'financials': data.get('financials', {}),
+            'financialLabels': data.get('financialLabels', {}),
             'termsAndConditions': data.get('termsAndConditions'),
-            'originalOfferRef': data.get('originalOfferRef')
+            'originalOfferRef': data.get('originalOfferRef'),
+            'searchSettings': data.get('searchSettings', {})
         })
     elif project_type == 'challan':
          project_data.update({
