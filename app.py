@@ -555,12 +555,16 @@ def search_items():
     if selected_types:
         sorted_results = [item for item in sorted_results if item.get('product_type') in selected_types]
     
-    # Remove admin fields for non-admin users
+    # --- MODIFICATION START ---
+    # The 'po_price' is no longer removed for non-admins.
+    # The frontend is responsible for hiding this information from the UI based on user role.
+    # This ensures the data is preserved when a normal user saves a project.
     if role != 'admin':
         for item in sorted_results:
-            item.pop('po_price', None)
+            # We only remove temporary scoring keys now, not data fields.
             item.pop('relevance_score', None)
             item.pop('source_sort_key', None)
+    # --- MODIFICATION END ---
     
     return jsonify(sorted_results)
 
@@ -610,10 +614,8 @@ def save_project():
     elif project_type == 'po':
          project_data.update({
             'financials': data.get('financials', {}),
-            'financialLabels': data.get('financialLabels', {}),
             'termsAndConditions': data.get('termsAndConditions'),
-            'originalOfferRef': data.get('originalOfferRef'),
-            'searchSettings': data.get('searchSettings', {})
+            'originalOfferRef': data.get('originalOfferRef')
         })
     elif project_type == 'challan':
          project_data.update({
