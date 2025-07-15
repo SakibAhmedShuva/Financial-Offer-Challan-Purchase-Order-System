@@ -1,0 +1,1822 @@
+// /static/offer.js
+function initializeOfferModule(deps) {
+    const { API_URL, currentUser, showToast, updateProjectState, saveAsModal, setDirty, getDirty, showConfirmModal } = deps;
+
+    // --- STATE ---
+    let selectedClient = null, offerItems = [], itemSearchTimeout, currentProjectId = null, currentReferenceNumber = null;
+    let selectedCover = null;
+    let isSummaryPageEnabled = true; 
+    let summaryScopeDescriptions = {}; 
+    let includeSignature = true;
+    let currentSortOrder = 'custom';
+    let searchSettings = { foreign: true, local: false };
+    let descriptionSearchTimeout = null;
+    let activeDescriptionCell = null;
+    let activeScrollListener = null;
+    let activeKeydownHandler = null;
+
+    const getDefaultFinancialLabels = () => ({
+        foreignPrice: 'Foreign Price',
+        subtotalForeign: 'Subtotal:',
+        freight: 'Freight:',
+        discountForeign: 'Discount:',
+        grandtotalForeign: 'Grand Total, Ex-Works (USD):',
+        localPrice: 'Local Supply Price',
+        subtotalLocal: 'Subtotal:',
+        delivery: 'Delivery:',
+        discountLocal: 'Discount:',
+        grandtotalLocal: 'Grand Total (BDT):',
+        installationPrice: 'Installation Price',
+        subtotalInstallation: 'Subtotal:',
+        discountInstallation: 'Discount:',
+        grandtotalInstallation: 'Grand Total (BDT):'
+    });
+
+    let financialLabels = getDefaultFinancialLabels();
+
+    let financials = { 
+        freight_foreign_usd: 0, 
+        discount_foreign_usd: 0,
+        delivery_local_bdt: 0, 
+        discount_local_bdt: 0,
+        discount_installation_bdt: 0,
+        use_freight: false,
+        use_delivery: false,
+        use_discount_foreign: false,
+        use_discount_local: false,
+        use_discount_installation: false
+    };
+    let visibleColumns = { 
+        foreign_price: true,
+        po_price: false,
+        local_supply_price: false,
+        installation_price: false
+    };
+
+    // --- UNDO/REDO STATE ---
+    let history = [];
+    let historyIndex = -1;
+    let isRestoringState = false; 
+    let captureTimeout;
+
+    // --- DOM ELEMENTS ---
+    const newOfferBtn = document.getElementById('new-offer-btn');
+    const clientSearchInput = document.getElementById('client-search-input'), clientSearchResults = document.getElementById('client-search-results'), selectedClientInfo = document.getElementById('selected-client-info');
+    const itemSearchInput = document.getElementById('item-search-input'), itemSearchResults = document.getElementById('item-search-results'), itemSearchLoader = document.getElementById('item-search-loader');
+    const offerTableHead = document.getElementById('offer-table-head'), offerTableBody = document.getElementById('offer-table-body'), tablePlaceholder = document.getElementById('table-placeholder');
+    const offerCategoryCheckboxes = document.getElementById('offer-category-checkboxes');
+    const saveProjectBtn = document.getElementById('save-project-btn'), saveAsBtn = document.getElementById('save-as-btn'), exportPdfBtn = document.getElementById('export-pdf-btn'), exportXlsxBtn = document.getElementById('export-xlsx-btn');
+    const financialsSection = document.getElementById('financials-section'), offerTableActions = document.getElementById('offer-table-actions');
+    const columnsToggleBtn = document.getElementById('columns-toggle-btn'), columnsDropdown = document.getElementById('columns-dropdown');
+    const sortToggleBtn = document.getElementById('sort-toggle-btn'), sortDropdown = document.getElementById('sort-dropdown');
+    const addCustomItemBtn = document.getElementById('add-custom-item-btn');
+    const tncTextarea = document.getElementById('tnc-textarea'), tncInternationalCheckbox = document.getElementById('tnc-international'), tncLocalSupplyCheckbox = document.getElementById('tnc-local-supply'), tncLocalInstallationCheckbox = document.getElementById('tnc-local-installation');
+    const offerProjectName = document.getElementById('offer-project-name');
+    const coverSearchInput = document.getElementById('cover-search-input');
+    const coverSearchResults = document.getElementById('cover-search-results');
+    const suggestedCoversContainer = document.getElementById('suggested-covers-container');
+    const coverPreviewContainer = document.getElementById('cover-preview-container');
+    const selectedCoverInfo = document.getElementById('selected-cover-info');
+    const selectedCoverName = document.getElementById('selected-cover-name');
+    const noCoverSelected = document.getElementById('no-cover-selected');
+    const removeCoverBtn = document.getElementById('remove-cover-btn');
+    const coverUploadZone = document.getElementById('cover-upload-zone');
+    const coverFileInput = document.getElementById('cover-file-input');
+    const enableSummaryPageCheckbox = document.getElementById('enable-summary-page-checkbox');
+    const financialSummaryContainer = document.getElementById('financial-summary-container');
+    const includeSignatureCheckbox = document.getElementById('offer-add-signature');
+    const sheetFilterContainer = document.getElementById('offer-sheet-filter-container');
+    const searchForeignCheckbox = document.getElementById('search-foreign');
+    const searchLocalCheckbox = document.getElementById('search-local');
+
+    const cleanupSuggestions = () => {
+        const dropdown = document.getElementById('offer-description-suggestions');
+        if (dropdown) dropdown.remove();
+        
+        const mainScroller = document.querySelector('main');
+        if (mainScroller && activeScrollListener) {
+            mainScroller.removeEventListener('scroll', activeScrollListener);
+        }
+        if (activeDescriptionCell && activeKeydownHandler) {
+            activeDescriptionCell.removeEventListener('keydown', activeKeydownHandler);
+        }
+        activeDescriptionCell = null;
+        activeScrollListener = null;
+        activeKeydownHandler = null;
+    };
+    
+    // --- HISTORY MANAGEMENT FUNCTIONS ---
+    const captureState = () => {
+        if (isRestoringState) return;
+
+        clearTimeout(captureTimeout);
+        captureTimeout = setTimeout(() => {
+            const state = {
+                selectedClient: JSON.parse(JSON.stringify(selectedClient)),
+                offerItems: JSON.parse(JSON.stringify(offerItems)),
+                financials: JSON.parse(JSON.stringify(financials)),
+                financialLabels: JSON.parse(JSON.stringify(financialLabels)),
+                visibleColumns: JSON.parse(JSON.stringify(visibleColumns)),
+                searchSettings: JSON.parse(JSON.stringify(searchSettings)),
+                selectedCover: selectedCover,
+                isSummaryPageEnabled: isSummaryPageEnabled, 
+                summaryScopeDescriptions: JSON.parse(JSON.stringify(summaryScopeDescriptions)), 
+                includeSignature: includeSignature,
+                tncState: { 
+                    international: tncInternationalCheckbox.checked,
+                    local_supply: tncLocalSupplyCheckbox.checked,
+                    local_installation: tncLocalInstallationCheckbox.checked,
+                    value: tncTextarea.value 
+                },
+                projectName: offerProjectName.textContent
+            };
+            
+            if (history.length > 0) {
+                const lastState = JSON.stringify(history[historyIndex]);
+                if (lastState === JSON.stringify(state)) {
+                    return; 
+                }
+            }
+
+            if (historyIndex < history.length - 1) {
+                history = history.slice(0, historyIndex + 1);
+            }
+            
+            history.push(state);
+            historyIndex++;
+            
+            if (historyIndex > 0) {
+                setDirty(true);
+            }
+
+        }, 250); 
+    };
+
+    const updateFinancialLabelsInDOM = () => {
+        for (const key in financialLabels) {
+            const el = document.getElementById(`${key.replace(/([A-Z])/g, "-$1").toLowerCase()}-label`);
+            if (el && el.textContent !== financialLabels[key]) {
+                el.textContent = financialLabels[key];
+            }
+        }
+    };
+
+    const restoreState = (state) => {
+        if (!state) return;
+        isRestoringState = true;
+
+        selectedClient = state.selectedClient;
+        offerItems = state.offerItems;
+        financials = state.financials;
+        financialLabels = state.financialLabels || getDefaultFinancialLabels();
+        visibleColumns = state.visibleColumns;
+        searchSettings = state.searchSettings || { foreign: true, local: false };
+        selectedCover = state.selectedCover;
+        isSummaryPageEnabled = state.isSummaryPageEnabled;
+        summaryScopeDescriptions = state.summaryScopeDescriptions || {};
+        includeSignature = state.includeSignature === undefined ? true : state.includeSignature;
+        
+        if(includeSignatureCheckbox) {
+            includeSignatureCheckbox.checked = includeSignature;
+        }
+
+        if(state.tncState) {
+            tncInternationalCheckbox.checked = state.tncState.international;
+            tncLocalSupplyCheckbox.checked = state.tncState.local_supply;
+            tncLocalInstallationCheckbox.checked = state.tncState.local_installation;
+            tncTextarea.value = state.tncState.value;
+        }
+        offerProjectName.textContent = state.projectName;
+        
+        if (selectedClient) {
+            document.getElementById('client-name').textContent = selectedClient.name;
+            document.getElementById('client-address').textContent = selectedClient.address;
+            selectedClientInfo.style.display = 'block';
+            clientSearchInput.value = selectedClient.name;
+        } else {
+            selectedClientInfo.style.display = 'none';
+            clientSearchInput.value = '';
+        }
+        
+        for (const key in financials) {
+            if (key.startsWith('use_')) continue;
+            const input = financialsSection.querySelector(`[data-type="${key}"]`);
+            if (input) input.value = financials[key];
+        }
+
+        enableSummaryPageCheckbox.checked = isSummaryPageEnabled;
+        searchForeignCheckbox.checked = searchSettings.foreign;
+        searchLocalCheckbox.checked = searchSettings.local;
+        
+        updateFinancialLabelsInDOM();
+
+        renderFinancialSummaryUI();
+        setupFinancialsUI();
+        renderOfferTable();
+        renderSelectedCover();
+        updateActionButtons();
+        renderOfferCategoryCheckboxes();
+        setupColumnsDropdown();
+        setupSortDropdown();
+
+        isRestoringState = false;
+    };
+
+    const handleUndo = () => {
+        if (historyIndex > 0) {
+            historyIndex--;
+            restoreState(history[historyIndex]);
+        }
+    };
+
+    const handleRedo = () => {
+        if (historyIndex < history.length - 1) {
+            historyIndex++;
+            restoreState(history[historyIndex]);
+        }
+    };
+
+
+    // --- RENDER FUNCTIONS ---
+    
+    const updateInWordsSummary = async (usd, bdt) => {
+        const wordsUsdEl = document.getElementById('summary-words-usd');
+        const wordsBdtEl = document.getElementById('summary-words-bdt');
+    
+        if (!wordsUsdEl || !wordsBdtEl) return;
+    
+        try {
+            const response = await fetch(`${API_URL}/convert_to_words`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usd_value: usd, bdt_value: bdt })
+            });
+            const result = await response.json();
+    
+            if (result.success) {
+                wordsUsdEl.textContent = result.words_usd;
+                wordsBdtEl.textContent = result.words_bdt;
+            } else {
+                wordsUsdEl.textContent = 'N/A';
+                wordsBdtEl.textContent = 'N/A';
+            }
+        } catch (err) {
+            console.error('Failed to convert numbers to words:', err);
+            wordsUsdEl.textContent = 'Error';
+            wordsBdtEl.textContent = 'Error';
+        }
+    };
+    
+    const renderFinancialSummaryUI = () => {
+        if (!isSummaryPageEnabled) {
+            financialSummaryContainer.style.display = 'none';
+            return;
+        }
+        financialSummaryContainer.style.display = 'block';
+
+        if (offerItems.length === 0) {
+            financialSummaryContainer.innerHTML = '<p class="text-center text-slate-500 dark:text-slate-400 py-8">Add items to the offer to see the financial summary.</p>';
+            return;
+        }
+
+        const scopes = {};
+        offerItems.forEach(item => {
+            const type = item.product_type || 'MISC';
+            const foreignValue = parseFloat(item.foreign_total_usd || 0);
+            const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
+            const installationValue = parseFloat(item.installation_total_bdt || 0);
+
+            if (foreignValue > 0) {
+                const scopeKey = `${type}-foreign`;
+                if (!scopes[scopeKey]) {
+                    scopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: `Foreign Supply of ${type} Items` };
+                }
+                scopes[scopeKey].total_usd += foreignValue;
+            }
+            if (localSupplyValue > 0) {
+                const scopeKey = `${type}-localsupply`;
+                if (!scopes[scopeKey]) {
+                    scopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: `Local Supply of ${type} Items` };
+                }
+                scopes[scopeKey].total_bdt += localSupplyValue;
+            }
+            if (installationValue > 0) {
+                const scopeKey = `${type}-installation`;
+                if (!scopes[scopeKey]) {
+                    scopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: `Installation of ${type} Items` };
+                }
+                scopes[scopeKey].total_bdt += installationValue;
+            }
+        });
+
+        Object.keys(scopes).forEach(key => {
+            if (summaryScopeDescriptions[key]) {
+                scopes[key].description = summaryScopeDescriptions[key];
+            }
+        });
+
+        let sub_total_usd = 0;
+        let sub_total_bdt = 0;
+        
+        const scopeOrder = ['foreign', 'localsupply', 'installation'];
+        const sortedScopeKeys = Object.keys(scopes).sort((a, b) => {
+            const [typeA, subTypeA] = a.split('-');
+            const [typeB, subTypeB] = b.split('-');
+    
+            const indexA = scopeOrder.indexOf(subTypeA);
+            const indexB = scopeOrder.indexOf(subTypeB);
+    
+            if (indexA !== indexB) {
+                return indexA - indexB;
+            }
+    
+            if (typeA < typeB) return -1;
+            if (typeA > typeB) return 1;
+    
+            return 0;
+        });
+
+        const scopeRows = sortedScopeKeys.map((key, index) => {
+            const scope = scopes[key];
+            sub_total_usd += scope.total_usd;
+            sub_total_bdt += scope.total_bdt;
+            return `
+                <tr>
+                    <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-center">${String.fromCharCode(65 + index)}</td>
+                    <td class="px-2 py-2 border border-slate-300 dark:border-slate-600">
+                        <input type="text" value="${scope.description}" data-scopetype="${key}" class="summary-scope-desc w-full p-1 bg-transparent dark:bg-transparent rounded">
+                    </td>
+                    <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-medium">${scope.total_usd > 0 ? scope.total_usd.toLocaleString('en-US', {minimumFractionDigits: 2}) : '-'}</td>
+                    <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-medium">${scope.total_bdt > 0 ? scope.total_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2}) : '-'}</td>
+                </tr>
+            `;
+        }).join('');
+        
+        const freight_usd = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
+        const discount_foreign_usd = financials.use_discount_foreign ? parseFloat(financials.discount_foreign_usd || 0) : 0;
+        const delivery_bdt = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
+        const discount_local_bdt = financials.use_discount_local ? parseFloat(financials.discount_local_bdt || 0) : 0;
+        const discount_install_bdt = financials.use_discount_installation ? parseFloat(financials.discount_installation_bdt || 0) : 0;
+
+        const discount_bdt_total = discount_local_bdt + discount_install_bdt;
+        const grand_total_usd = sub_total_usd + freight_usd - discount_foreign_usd;
+        const grand_total_bdt = sub_total_bdt + delivery_bdt - discount_bdt_total;
+
+        financialSummaryContainer.innerHTML = `
+            <table class="w-full text-sm">
+                <thead class="bg-slate-100 dark:bg-slate-700">
+                    <tr>
+                        <th class="px-2 py-2 border border-slate-300 dark:border-slate-600">Sl. No.</th>
+                        <th class="px-2 py-2 border border-slate-300 dark:border-slate-600 w-1/2">Scope of Works</th>
+                        <th class="px-2 py-2 border border-slate-300 dark:border-slate-600">Imported Items (USD)</th>
+                        <th class="px-2 py-2 border border-slate-300 dark:border-slate-600">Supply, Installation (BDT)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${scopeRows}
+                    <tr>
+                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold">Sub-Total:</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold">${sub_total_usd.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold">${sub_total_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">Sea Freight:</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${freight_usd.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">Delivery Charge:</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${delivery_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">Special Discount:</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">(${discount_foreign_usd.toLocaleString('en-US', {minimumFractionDigits: 2})})</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">(${discount_bdt_total.toLocaleString('en-BD', {minimumFractionDigits: 2})})</td>
+                    </tr>
+                     <tr class="bg-slate-100 dark:bg-slate-700">
+                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-extrabold">Grand Total:</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-extrabold">${grand_total_usd.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-extrabold">${grand_total_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+                    </tr>
+                    <tr class="bg-white dark:bg-slate-800">
+                        <td colspan="2" class="border p-2 text-right font-bold border-slate-300 dark:border-slate-600">In Words (Foreign Part):</td>
+                        <td colspan="2" id="summary-words-usd" class="border p-2 font-semibold border-slate-300 dark:border-slate-600">Loading...</td>
+                    </tr>
+                    <tr class="bg-slate-50 dark:bg-slate-700/50">
+                        <td colspan="2" class="border p-2 text-right font-bold border-slate-300 dark:border-slate-600">In Words (Local Part):</td>
+                        <td colspan="2" id="summary-words-bdt" class="border p-2 font-semibold border-slate-300 dark:border-slate-600">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        `;
+
+        updateInWordsSummary(grand_total_usd, grand_total_bdt);
+    };
+
+    const renderSelectedCover = () => {
+        coverPreviewContainer.innerHTML = '';
+        if (selectedCover) {
+            coverPreviewContainer.classList.remove('hidden');
+            selectedCoverInfo.classList.remove('hidden');
+            noCoverSelected.classList.add('hidden');
+            selectedCoverName.textContent = selectedCover;
+            selectedCoverName.title = selectedCover;
+            const img = document.createElement('img');
+            img.src = `${API_URL}/get_cover_thumbnail/${encodeURIComponent(selectedCover)}`;
+            img.alt = `Preview of ${selectedCover}`;
+            img.className = 'w-full h-full object-contain rounded-lg bg-slate-200 dark:bg-slate-700';
+            img.onload = () => img.classList.remove('bg-slate-200', 'dark:bg-slate-700');
+            img.onerror = () => {
+                coverPreviewContainer.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-red-100 dark:bg-red-900/50 rounded-lg"><p class="text-red-600 dark:text-red-300 font-semibold">Preview not available</p></div>`;
+            };
+            coverPreviewContainer.appendChild(img);
+        } else {
+            coverPreviewContainer.classList.add('hidden');
+            selectedCoverInfo.classList.add('hidden');
+            noCoverSelected.classList.remove('hidden');
+        }
+    };
+
+    const setupColumnsDropdown = () => {
+        columnsDropdown.innerHTML = ''; 
+        columnsDropdown.innerHTML += `
+            <div class="flex items-center space-x-2 p-1">
+                <input type="checkbox" id="toggle-foreign_price" data-col="foreign_price" class="h-4 w-4 rounded" ${visibleColumns.foreign_price ? 'checked' : ''}>
+                <label for="toggle-foreign_price" class="text-slate-700 dark:text-slate-300">Foreign Price</label>
+            </div>`;
+        if (currentUser.role === 'admin') {
+            columnsDropdown.innerHTML += `
+                <div class="flex items-center space-x-2 p-1">
+                    <input type="checkbox" id="toggle-po_price" data-col="po_price" class="h-4 w-4 rounded" ${visibleColumns.po_price ? 'checked' : ''}>
+                    <label for="toggle-po_price" class="text-slate-700 dark:text-slate-300">PO Price</label>
+                </div>`;
+        }
+        columnsDropdown.innerHTML += `
+            <div class="flex items-center space-x-2 p-1">
+                <input type="checkbox" id="toggle-local_supply_price" data-col="local_supply_price" class="h-4 w-4 rounded" ${visibleColumns.local_supply_price ? 'checked' : ''}>
+                <label for="toggle-local_supply_price" class="text-slate-700 dark:text-slate-300">Local Supply Price</label>
+            </div>
+            <div class="flex items-center space-x-2 p-1">
+                <input type="checkbox" id="toggle-installation_price" data-col="installation_price" class="h-4 w-4 rounded" ${visibleColumns.installation_price ? 'checked' : ''}>
+                <label for="toggle-installation_price" class="text-slate-700 dark:text-slate-300">Installation Price</label>
+            </div>
+        `;
+    };
+
+    const setupSortDropdown = () => {
+        const sortOptions = {
+            'custom': 'Custom Order',
+            'category_asc': 'Category (A-Z)',
+            'category_desc': 'Category (Z-A)',
+            'source_foreign': 'Source (Foreign First)',
+        };
+        sortDropdown.innerHTML = '';
+        for (const [key, value] of Object.entries(sortOptions)) {
+            const isChecked = currentSortOrder === key;
+            sortDropdown.innerHTML += `
+                <div class="flex items-center p-1">
+                    <input type="radio" id="sort-${key}" name="sort_option" value="${key}" class="h-4 w-4 text-sky-600 focus:ring-sky-500" ${isChecked ? 'checked' : ''}>
+                    <label for="sort-${key}" class="ml-2 text-sm text-slate-700 dark:text-slate-300">${value}</label>
+                </div>
+            `;
+        }
+    };
+    
+    const sortOfferItems = () => {
+        const indexedItems = offerItems.map((item, index) => ({ item, originalIndex: index }));
+
+        switch (currentSortOrder) {
+            case 'category_asc':
+                indexedItems.sort((a, b) => (a.item.product_type || '').localeCompare(b.item.product_type || ''));
+                break;
+            case 'category_desc':
+                indexedItems.sort((a, b) => (b.item.product_type || '').localeCompare(a.item.product_type || ''));
+                break;
+            case 'source_foreign':
+                indexedItems.sort((a, b) => {
+                    const aIsForeign = a.item.source_type === 'foreign';
+                    const bIsForeign = b.item.source_type === 'foreign';
+                    if (aIsForeign && !bIsForeign) return -1;
+                    if (!aIsForeign && bIsForeign) return 1;
+                    return a.originalIndex - b.originalIndex; 
+                });
+                break;
+            case 'custom':
+            default:
+                 indexedItems.sort((a, b) => a.originalIndex - b.originalIndex);
+                break;
+        }
+        offerItems = indexedItems.map(i => i.item);
+    };
+    
+    const updateSummaryPageCheckboxState = () => {
+        const hasForeignItems = visibleColumns.foreign_price && offerItems.some(i => parseFloat(i.foreign_total_usd || 0) > 0);
+        
+        if (!hasForeignItems && offerItems.length > 0) {
+            enableSummaryPageCheckbox.checked = false;
+        } else {
+            enableSummaryPageCheckbox.checked = true;
+        }
+        isSummaryPageEnabled = enableSummaryPageCheckbox.checked;
+        renderFinancialSummaryUI();
+    };
+
+    const addDescriptionSuggestionNav = (targetCell, dropdown) => {
+        let selectedIdx = -1;
+    
+        activeKeydownHandler = (e) => {
+            const items = Array.from(dropdown.querySelectorAll('.search-result-item'));
+            if (!items.length || dropdown.classList.contains('hidden')) return;
+    
+            let currentSelection = dropdown.querySelector('.bg-sky-100');
+            if (currentSelection) {
+                currentSelection.classList.remove('bg-sky-100', 'dark:bg-sky-900');
+            }
+    
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIdx = (selectedIdx + 1) % items.length;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIdx = (selectedIdx - 1 + items.length) % items.length;
+            } else if (e.key === 'Enter' && selectedIdx > -1) {
+                e.preventDefault();
+                items[selectedIdx].click();
+                selectedIdx = -1;
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cleanupSuggestions();
+                selectedIdx = -1;
+            }
+    
+            if (selectedIdx > -1) {
+                items[selectedIdx].classList.add('bg-sky-100', 'dark:bg-sky-900');
+                items[selectedIdx].scrollIntoView({ block: 'nearest' });
+            }
+        };
+    
+        targetCell.addEventListener('keydown', activeKeydownHandler);
+    };
+
+    const renderDescriptionSuggestions = (items, targetCell) => {
+        cleanupSuggestions();
+
+        const dropdown = document.createElement('div');
+        dropdown.id = 'offer-description-suggestions';
+        dropdown.className = 'search-results-dropdown z-30';
+        document.body.appendChild(dropdown);
+
+        dropdown.innerHTML = '';
+        if (items.length === 0) {
+            dropdown.innerHTML = '<div class="p-2 text-center text-xs text-slate-500">No matches found</div>';
+        } else {
+            items.slice(0, 10).forEach(item => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'search-result-item cursor-pointer p-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600 border-b border-slate-200 dark:border-slate-700 whitespace-normal';
+                itemDiv.innerHTML = item.description; // MODIFIED: Use innerHTML to render rich text
+                itemDiv.onclick = () => {
+                    const row = targetCell.closest('tr');
+                    const itemIndex = parseInt(row.dataset.itemIndex, 10);
+                    
+                    const newItem = {
+                        ...item,
+                        qty: offerItems[itemIndex].qty || 1,
+                        unit: item.unit || 'Pcs',
+                        foreign_price_usd: item.source_type === 'foreign' ? item.offer_price : 0.00,
+                        local_supply_price_bdt: item.source_type === 'local' ? item.offer_price : 0.00,
+                        installation_price_bdt: item.installation || 0.00,
+                        po_price_usd: item.po_price || 0.00
+                    };
+                    const qty = parseFloat(newItem.qty);
+                    newItem.foreign_total_usd = (qty * parseFloat(newItem.foreign_price_usd)).toFixed(2);
+                    newItem.local_supply_total_bdt = (qty * parseFloat(newItem.local_supply_price_bdt)).toFixed(2);
+                    newItem.installation_total_bdt = (qty * parseFloat(newItem.installation_price_bdt)).toFixed(2);
+                    newItem.po_total_usd = (qty * parseFloat(newItem.po_price_usd)).toFixed(2);
+
+                    offerItems[itemIndex] = newItem;
+
+                    cleanupSuggestions();
+                    renderOfferTable();
+                    captureState();
+                };
+                dropdown.appendChild(itemDiv);
+            });
+        }
+        
+        const mainScroller = document.querySelector('main');
+        const updatePosition = () => {
+            if (!activeDescriptionCell || !document.body.contains(activeDescriptionCell)) {
+                cleanupSuggestions();
+                return;
+            }
+            const rect = activeDescriptionCell.getBoundingClientRect();
+            dropdown.style.left = `${rect.left}px`;
+            dropdown.style.top = `${rect.bottom}px`;
+        };
+
+        const rect = targetCell.getBoundingClientRect();
+        dropdown.style.position = 'fixed';
+        dropdown.style.left = `${rect.left}px`;
+        dropdown.style.top = `${rect.bottom}px`;
+        dropdown.style.width = 'auto';
+        dropdown.style.minWidth = `${rect.width}px`;
+        dropdown.style.maxWidth = '500px';
+        
+        activeScrollListener = updatePosition;
+        if(mainScroller) mainScroller.addEventListener('scroll', activeScrollListener);
+        
+        dropdown.classList.remove('hidden');
+        
+        addDescriptionSuggestionNav(targetCell, dropdown);
+    };
+
+    const handleDescriptionInput = (e) => {
+        const cell = e.target;
+        activeDescriptionCell = cell;
+        const query = cell.textContent.trim();
+
+        if (query.length < 3) {
+            cleanupSuggestions();
+            return;
+        }
+
+        clearTimeout(descriptionSearchTimeout);
+        descriptionSearchTimeout = setTimeout(async () => {
+            if (cell !== activeDescriptionCell) return;
+            try {
+                const selectedSheets = Array.from(sheetFilterContainer.querySelectorAll('input[name="sheet_filter"]:checked')).map(cb => cb.value).join(',');
+                const source = searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local';
+                const apiUrl = `${API_URL}/search_items?q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${source}&types=${encodeURIComponent(selectedSheets)}`;
+                
+                const res = await fetch(apiUrl);
+                if (!res.ok) throw new Error('Search failed');
+                const items = await res.json();
+
+                renderDescriptionSuggestions(items, cell);
+            } catch (err) {
+                console.error("Description search failed:", err);
+                cleanupSuggestions();
+            }
+        }, 300);
+    };
+
+
+    const renderOfferTable = () => {
+        cleanupSuggestions();
+        offerTableHead.innerHTML = '';
+        offerTableBody.innerHTML = '';
+
+        sortOfferItems();
+
+        const hasItems = offerItems.length > 0;
+        financialsSection.classList.toggle('hidden', !hasItems);
+        tablePlaceholder.style.display = hasItems ? 'none' : 'block';
+        offerTableActions.style.display = 'block';
+
+        if (!hasItems) {
+             renderFinancialSummaryUI();
+             suggestCovers();
+             return;
+        }
+
+        const headerRow1 = document.createElement('tr');
+        const headerRow2 = document.createElement('tr');
+        const addHeader = (row, text, opts = {}) => {
+            const th = document.createElement('th');
+            th.innerHTML = text;
+            th.className = `px-2 py-2 border border-slate-300 dark:border-slate-600 text-center align-middle ${opts.className || ''}`;
+            if(opts.rowSpan) th.rowSpan = opts.rowSpan;
+            if(opts.colSpan) th.colSpan = opts.colSpan;
+            row.appendChild(th);
+        };
+        
+        addHeader(headerRow1, 'SL NO', { rowSpan: 2 });
+        addHeader(headerRow1, 'DESCRIPTION', { rowSpan: 2, className: 'w-1/3' });
+        addHeader(headerRow1, 'QTY', { rowSpan: 2 });
+        addHeader(headerRow1, 'UNIT', { rowSpan: 2 });
+
+        const priceHeaders = [
+            { title: 'FOREIGN PRICE', currency: 'USD', key: 'foreign', price_key: 'foreign_price_usd', total_key: 'foreign_total_usd', is_visible: visibleColumns.foreign_price },
+            { title: 'PO PRICE', currency: 'USD', key: 'po_price', price_key: 'po_price_usd', total_key: 'po_total_usd', is_visible: currentUser.role === 'admin' && visibleColumns.po_price},
+            { title: 'LOCAL SUPPLY PRICE', currency: 'BDT', key: 'local_supply_price', price_key: 'local_supply_price_bdt', total_key: 'local_supply_total_bdt', is_visible: visibleColumns.local_supply_price},
+            { title: 'INSTALLATION PRICE', currency: 'BDT', key: 'installation_price', price_key: 'installation_price_bdt', total_key: 'installation_total_bdt', is_visible: visibleColumns.installation_price }
+        ];
+
+        priceHeaders.forEach(h => {
+            if(!h.is_visible) return;
+            addHeader(headerRow1, h.title, { colSpan: 2, className: `${h.key}-col text-center` });
+            addHeader(headerRow2, `PRICE (${h.currency})`, { className: `${h.key}-col` });
+            addHeader(headerRow2, `TOTAL (${h.currency})`, { className: `${h.key}-col` });
+        });
+
+        addHeader(headerRow1, 'CATEGORY', { rowSpan: 2 });
+        addHeader(headerRow1, 'Action', { rowSpan: 2 });
+        offerTableHead.appendChild(headerRow1);
+        offerTableHead.appendChild(headerRow2);
+        
+        offerItems.forEach((item, index) => {
+            const row = document.createElement('tr');
+            row.dataset.itemIndex = index;
+            
+            let rowClasses = "border-t border-slate-200 dark:border-slate-700";
+            if (item.source_type !== 'foreign' && currentSortOrder !== 'source_foreign') {
+                rowClasses += " bg-slate-100 dark:bg-slate-700/50";
+            }
+            if (item.source_type === 'foreign' && currentSortOrder === 'source_foreign') {
+                 rowClasses += " bg-blue-50 dark:bg-blue-900/20";
+            }
+            row.className = rowClasses;
+
+            let rowHTML = `
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-center" contenteditable="true" data-field="unit">${item.unit || 'Pcs'}</td>`;
+
+            priceHeaders.forEach(h => {
+                if(h.is_visible) {
+                    const unitPrice = parseFloat(item[h.price_key] || 0).toFixed(2);
+                    rowHTML += `
+                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right" contenteditable="true" data-field="${h.price_key}">${unitPrice}</td>
+                        <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${item[h.total_key] || '0.00'}</td>`;
+                }
+            });
+
+            rowHTML += `
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600">
+                    <select data-field="product_type" class="w-full p-1 bg-transparent dark:bg-slate-700 rounded border-slate-300 dark:border-slate-600 focus:ring-sky-500">
+                        <option value="FDS" ${item.product_type === 'FDS' ? 'selected' : ''}>FDS</option>
+                        <option value="FPS" ${item.product_type === 'FPS' ? 'selected' : ''}>FPS</option>
+                        <option value="FD" ${item.product_type === 'FD' ? 'selected' : ''}>FD</option>
+                        <option value="FC" ${item.product_type === 'FC' ? 'selected' : ''}>FC</option>
+                        <option value="MISC" ${item.product_type === 'MISC' ? 'selected' : ''}>MISC</option>
+                    </select>
+                </td>
+                <td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-2">
+                    <button class="move-item-up-btn text-slate-400 hover:text-blue-500" title="Move Up"><i class="fas fa-arrow-up"></i></button>
+                    <button class="move-item-down-btn text-slate-400 hover:text-blue-500" title="Move Down"><i class="fas fa-arrow-down"></i></button>
+                    <button class="remove-item-btn text-slate-400 hover:text-red-500" title="Remove Item"><i class="fas fa-trash"></i></button>
+                </td>`;
+            row.innerHTML = rowHTML;
+            offerTableBody.appendChild(row);
+        });
+        updateFinancialSummary();
+        renderFinancialSummaryUI();
+    };
+
+    const renderOfferCategoryCheckboxes = (savedCategories = null) => {
+        const allCategories = ['FDS', 'FPS', 'FD', 'FC'];
+        const categoriesToRender = savedCategories !== null ? savedCategories : [...new Set(offerItems.map(item => item.product_type))];
+        if (offerCategoryCheckboxes) {
+            offerCategoryCheckboxes.innerHTML = allCategories.map(cat => {
+                const checked = categoriesToRender.includes(cat) ? 'checked' : '';
+                return `<div class="flex items-center"><input id="cat-${cat}" type="checkbox" value="${cat}" name="category" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" ${checked}><label for="cat-${cat}" class="ml-3 block text-sm text-slate-700 dark:text-slate-300">${cat}</label></div>`;
+            }).join('');
+        }
+    };
+
+    const updateFinancialSummary = () => {
+        const hasFreight = financials.use_freight && parseFloat(financials.freight_foreign_usd || 0) > 0;
+
+        if (hasFreight) {
+            financialLabels.subtotalForeign = 'Subtotal, Ex-Works:';
+            financialLabels.grandtotalForeign = 'Grand Total, CFR, Chattogram (USD):';
+        } else {
+            financialLabels.subtotalForeign = 'Subtotal:';
+            financialLabels.grandtotalForeign = 'Grand Total, Ex-Works (USD):';
+        }
+        updateFinancialLabelsInDOM();
+
+        const subtotal_foreign = offerItems.reduce((acc, item) => acc + parseFloat(item.foreign_total_usd || 0), 0);
+        const subtotal_local = offerItems.reduce((acc, item) => acc + parseFloat(item.local_supply_total_bdt || 0), 0);
+        const subtotal_installation = offerItems.reduce((acc, item) => acc + parseFloat(item.installation_total_bdt || 0), 0);
+
+        const freight = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
+        const delivery = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
+        const discount_foreign = financials.use_discount_foreign ? parseFloat(financials.discount_foreign_usd || 0) : 0;
+        const discount_local = financials.use_discount_local ? parseFloat(financials.discount_local_bdt || 0) : 0;
+        const discount_installation = financials.use_discount_installation ? parseFloat(financials.discount_installation_bdt || 0) : 0;
+
+        const grandtotal_foreign = subtotal_foreign + freight - discount_foreign;
+        const grandtotal_local = subtotal_local + delivery - discount_local;
+        const grandtotal_installation = subtotal_installation - discount_installation;
+        
+        document.getElementById('subtotal-foreign').textContent = subtotal_foreign.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        document.getElementById('subtotal-local').textContent = subtotal_local.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
+        document.getElementById('subtotal-installation').textContent = subtotal_installation.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
+
+        document.getElementById('grandtotal-foreign').textContent = grandtotal_foreign.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        document.getElementById('grandtotal-local').textContent = grandtotal_local.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
+        document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
+        
+        renderFinancialSummaryUI();
+    };
+    
+    const resetOfferState = () => {
+        selectedClient = null; offerItems = []; currentProjectId = null; currentReferenceNumber = null; selectedCover = null;
+        isSummaryPageEnabled = true;
+        summaryScopeDescriptions = {};
+        includeSignature = true;
+        financialLabels = getDefaultFinancialLabels();
+        searchSettings = { foreign: true, local: false };
+        currentSortOrder = 'custom';
+
+        financials = { 
+            freight_foreign_usd: 0, discount_foreign_usd: 0,
+            delivery_local_bdt: 0, discount_local_bdt: 0,
+            discount_installation_bdt: 0,
+            use_freight: false, use_delivery: false,
+            use_discount_foreign: false, use_discount_local: false, use_discount_installation: false
+        };
+        setupFinancialsUI();
+        updateFinancialSummary();
+
+        visibleColumns = { 
+            foreign_price: true,
+            po_price: false,
+            local_supply_price: false,
+            installation_price: false
+        };
+        clientSearchInput.value = ''; itemSearchInput.value = ''; selectedClientInfo.style.display = 'none';
+        if (offerProjectName) offerProjectName.textContent = 'New Financial Offer';
+        tncTextarea.value = '';
+        tncInternationalCheckbox.checked = false; 
+        tncLocalSupplyCheckbox.checked = false;
+        tncLocalInstallationCheckbox.checked = false;
+        
+        if(includeSignatureCheckbox) {
+            includeSignatureCheckbox.checked = true;
+        }
+
+        enableSummaryPageCheckbox.checked = isSummaryPageEnabled;
+        searchForeignCheckbox.checked = searchSettings.foreign;
+        searchLocalCheckbox.checked = searchSettings.local;
+        
+        updateFinancialLabelsInDOM();
+        renderOfferTable(); updateActionButtons();
+        renderOfferCategoryCheckboxes();
+        renderSelectedCover(); suggestCovers();
+        setupColumnsDropdown();
+        setupSortDropdown();
+        renderFinancialSummaryUI();
+
+        history = [];
+        historyIndex = -1;
+        setDirty(false); 
+        setTimeout(() => captureState(), 50); 
+    };
+
+    const updateActionButtons = () => {
+        const disabled = offerItems.length === 0 || !selectedClient;
+        exportPdfBtn.disabled = disabled; exportXlsxBtn.disabled = disabled; saveProjectBtn.disabled = disabled; saveAsBtn.disabled = disabled;
+    };
+    
+    const fetchAndDisplayCovers = async (searchTerm = '') => {
+        try {
+            const res = await fetch(`${API_URL}/get_covers?q=${encodeURIComponent(searchTerm)}`);
+            if (!res.ok) throw new Error('Failed to fetch covers from server.');
+            const covers = await res.json();
+            
+            coverSearchResults.innerHTML = '';
+            if (covers.length > 0) {
+                 covers.forEach(cover => {
+                    const div = document.createElement('div');
+                    div.textContent = cover;
+                    div.className = 'search-result-item cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-600';
+                    div.onclick = () => {
+                        selectedCover = cover;
+                        renderSelectedCover();
+                        coverSearchResults.classList.add('hidden');
+                        coverSearchInput.value = '';
+                        captureState();
+                    };
+                    coverSearchResults.appendChild(div);
+                });
+                coverSearchResults.classList.remove('hidden');
+            } else {
+                coverSearchResults.classList.add('hidden');
+            }
+        } catch (err) {
+            console.error('Failed to fetch covers:', err);
+            showToast(err.message, true);
+        }
+    };
+    
+    const suggestCovers = async () => {
+        if (!selectedClient) {
+            suggestedCoversContainer.innerHTML = '<p class="text-slate-500 col-span-full">Select a client to see suggestions.</p>';
+            return;
+        }
+
+        const clientNameParts = selectedClient.name.toLowerCase().split(' ').filter(p => p.length > 2);
+        const categories = [...new Set(offerItems.map(item => item.product_type))].map(c => c.toLowerCase());
+        
+        try {
+            const res = await fetch(`${API_URL}/get_covers`);
+            if (!res.ok) throw new Error('Failed to fetch suggestions.');
+            const allCovers = await res.json();
+
+            const suggestions = allCovers.filter(cover => {
+                const lowerCover = cover.toLowerCase();
+                const clientMatch = clientNameParts.some(part => lowerCover.includes(part));
+                const categoryMatch = categories.some(cat => lowerCover.includes(cat));
+                return clientMatch || categoryMatch;
+            }).slice(0, 4);
+
+            suggestedCoversContainer.innerHTML = '';
+            if (suggestions.length > 0) {
+                suggestions.forEach(cover => {
+                    const button = document.createElement('button');
+                    button.textContent = cover;
+                    button.className = 'p-2 border rounded-md text-left text-sm hover:bg-sky-100 dark:hover:bg-sky-900 truncate';
+                    button.title = cover;
+                    button.onclick = () => {
+                        selectedCover = cover;
+                        renderSelectedCover();
+                        captureState();
+                    };
+                    suggestedCoversContainer.appendChild(button);
+                });
+            } else {
+                suggestedCoversContainer.innerHTML = '<p class="text-slate-500 col-span-full">No specific suggestions found.</p>';
+            }
+        } catch (err) {
+            console.error("Failed to suggest covers:", err);
+            showToast(err.message, true);
+        }
+    };
+
+    const handleCoverUpload = async (file) => {
+        if (!file || file.type !== 'application/pdf') {
+            showToast('Please upload a valid PDF file.', true);
+            return;
+        }
+
+        let refForUpload = currentReferenceNumber;
+        if (!refForUpload) {
+            if (!selectedClient) {
+                showToast('Please select a client before uploading a cover.', true);
+                return;
+            }
+            try {
+                const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
+                refForUpload = NameController.generateOfferReference({
+                    clientName: selectedClient.name,
+                    categories: checkedCategories,
+                    items: offerItems,
+                    visibleColumns: visibleColumns
+                });
+                currentReferenceNumber = refForUpload; 
+                offerProjectName.textContent = refForUpload; 
+                showToast(`Generated project reference: ${refForUpload}`, false);
+            } catch (err) {
+                showToast(err.message, true);
+                return;
+            }
+        }
+
+        const formData = new FormData();
+        formData.append('cover_pdf', file);
+        formData.append('referenceNumber', refForUpload);
+
+        showToast('Uploading custom cover...', false);
+
+        try {
+            const res = await fetch(`${API_URL}/upload_cover`, {
+                method: 'POST',
+                body: formData,
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                showToast('Custom cover uploaded successfully.', false);
+                selectedCover = result.savedFilename; 
+                renderSelectedCover(); 
+                suggestCovers();
+                captureState();
+            } else {
+                showToast(`Upload failed: ${result.message}`, true);
+            }
+        } catch (err) {
+            showToast(`An error occurred during upload: ${err.message}`, true);
+        } finally {
+            coverFileInput.value = '';
+        }
+    };
+
+    const handleSaveOffer = async (isSaveAs = false, newName = null) => {
+        const button = isSaveAs ? saveAsBtn : saveProjectBtn;
+        button.innerHTML = `<div class="loader !w-4 !h-4 !border-2"></div><span class="ml-2">Saving...</span>`;
+        button.disabled = true;
+
+        try {
+            let refToSave = currentReferenceNumber;
+            let idToSave = isSaveAs ? null : currentProjectId;
+            const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
+
+            if (isSaveAs && newName) {
+                refToSave = newName;
+            } else if (!idToSave && !refToSave) {
+                refToSave = NameController.generateOfferReference({
+                    clientName: selectedClient.name,
+                    categories: checkedCategories,
+                    items: offerItems,
+                    visibleColumns: visibleColumns
+                });
+            } else if (!idToSave && currentReferenceNumber) {
+                refToSave = currentReferenceNumber;
+            }
+
+            const payload = {
+                projectId: idToSave, referenceNumber: refToSave, client: selectedClient,
+                items: offerItems, financials, 
+                financialLabels,
+                user: currentUser, projectType: 'offer',
+                selected_cover: selectedCover,
+                visibleColumns,
+                searchSettings,
+                isSummaryPageEnabled,
+                summaryScopeDescriptions,
+                includeSignature: includeSignature,
+                categories: checkedCategories,
+                tncState: { 
+                    international: tncInternationalCheckbox.checked,
+                    local_supply: tncLocalSupplyCheckbox.checked,
+                    local_installation: tncLocalInstallationCheckbox.checked,
+                    value: tncTextarea.value 
+                }
+            };
+            const response = await fetch(`${API_URL}/project`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (result.success) {
+                currentProjectId = result.projectId;
+                currentReferenceNumber = result.referenceNumber;
+                updateProjectState({ projectId: currentProjectId, referenceNumber: currentReferenceNumber });
+                offerProjectName.textContent = currentReferenceNumber;
+                showToast(`Project saved with reference: ${currentReferenceNumber}`);
+                setDirty(false);
+            } else { showToast(`Error saving project: ${result.message}`, true); }
+        } catch (err) { showToast(`An error occurred: ${err.message}`, true); }
+        finally { button.innerHTML = isSaveAs ? '<i class="fa-solid fa-copy"></i> Save As' : '<i class="fa-solid fa-save"></i> Save'; updateActionButtons(); }
+    };
+
+    const handleExport = async (fileType) => {
+        const button = fileType === 'xlsx' ? exportXlsxBtn : exportPdfBtn;
+        button.innerHTML = `<div class="loader !w-4 !h-4 !border-2"></div><span class="ml-2">Generating...</span>`;
+        button.disabled = true;
+    
+        try {
+            const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
+            const termsAndConditions = tncTextarea.value;
+            let refForExport = currentReferenceNumber;
+    
+            if (!refForExport) {
+                refForExport = NameController.generateOfferReference({
+                    clientName: selectedClient.name,
+                    categories: checkedCategories,
+                    items: offerItems,
+                    visibleColumns: visibleColumns
+                });
+                currentReferenceNumber = refForExport;
+                offerProjectName.textContent = refForExport;
+            }
+            
+            const filename = NameController.generateOfferFilename({
+                referenceNumber: refForExport,
+                fileType: fileType
+            });
+            
+            const summaryScopes = {};
+            offerItems.forEach(item => {
+                const type = item.product_type || 'MISC';
+                const foreignValue = parseFloat(item.foreign_total_usd || 0);
+                const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
+                const installationValue = parseFloat(item.installation_total_bdt || 0);
+    
+                if (foreignValue > 0) {
+                    const scopeKey = `${type}-foreign`;
+                    if (!summaryScopes[scopeKey]) {
+                        summaryScopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: summaryScopeDescriptions[scopeKey] || `Foreign Supply of ${type} Items` };
+                    }
+                    summaryScopes[scopeKey].total_usd += foreignValue;
+                }
+                if (localSupplyValue > 0) {
+                    const scopeKey = `${type}-localsupply`;
+                    if (!summaryScopes[scopeKey]) {
+                        summaryScopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: summaryScopeDescriptions[scopeKey] || `Local Supply of ${type} Items` };
+                    }
+                    summaryScopes[scopeKey].total_bdt += localSupplyValue;
+                }
+                if (installationValue > 0) {
+                    const scopeKey = `${type}-installation`;
+                    if (!summaryScopes[scopeKey]) {
+                        summaryScopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: summaryScopeDescriptions[scopeKey] || `Installation of ${type} Items` };
+                    }
+                    summaryScopes[scopeKey].total_bdt += installationValue;
+                }
+            });
+
+            const payload = {
+                items: offerItems, client: selectedClient, financials, referenceNumber: refForExport,
+                user: currentUser, categories: checkedCategories, terms_and_conditions: termsAndConditions,
+                selected_cover: selectedCover,
+                visibleColumns,
+                isSummaryPageEnabled,
+                summaryScopes,
+                includeSignature: includeSignature,
+                filename: filename, 
+                financialLabels
+            };
+
+            const exportRes = await fetch(`${API_URL}/export_${fileType}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            if (!exportRes.ok) throw new Error(`Server error: ${exportRes.statusText}`);
+    
+            const blob = await exportRes.blob();
+            const a = document.createElement('a');
+            a.href = window.URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(a.href);
+        } catch (err) { console.error(`Export failed: ${err.message}`); showToast(`Failed to generate ${fileType} file: ${err.message}`, true); }
+        finally { button.innerHTML = fileType === 'pdf' ? '<i class="fa-solid fa-file-pdf"></i> PDF' : '<i class="fa-solid fa-file-excel"></i> Excel'; updateActionButtons(); }
+    };
+
+    const updateTncTextarea = async () => {
+        let tncParts = [];
+        tncTextarea.value = "Loading...";
+
+        try {
+            if (tncInternationalCheckbox.checked) {
+                const res = await fetch(`${API_URL}/get_tnc/international`);
+                tncParts.push((await res.json()).terms);
+            }
+            if (tncLocalSupplyCheckbox.checked) {
+                const resSupply = await fetch(`${API_URL}/get_tnc/local_supply`);
+                tncParts.push((await resSupply.json()).terms);
+            }
+            if (tncLocalInstallationCheckbox.checked) {
+                const resInstall = await fetch(`${API_URL}/get_tnc/local_installation`);
+                tncParts.push((await resInstall.json()).terms);
+            }
+            tncTextarea.value = tncParts.join('\n\n');
+        } catch (err) {
+            tncTextarea.value = `Error loading terms: ${err.message}`;
+        } finally {
+            captureState();
+        }
+    };
+    
+    // --- EVENT LISTENERS ---
+    
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            if (e.key === 'z') {
+                e.preventDefault();
+                handleUndo();
+            } else if (e.key === 'y') {
+                e.preventDefault();
+                handleRedo();
+            }
+        }
+    });
+
+    const loadSheetFilters = async () => {
+        try {
+            const response = await fetch(`${API_URL}/get_sheet_names`);
+            if (!response.ok) throw new Error('Failed to load sheet names');
+            const sheetNames = await response.json();
+
+            if (sheetFilterContainer) {
+                sheetFilterContainer.innerHTML = ''; 
+                if (sheetNames.length > 0) {
+                    sheetNames.forEach(name => {
+                        const div = document.createElement('div');
+                        div.className = 'flex items-center';
+                        div.innerHTML = `
+                            <input id="offer-sheet-${name.replace(/\s/g, '-')}" type="checkbox" value="${name}" name="sheet_filter" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" checked>
+                            <label for="offer-sheet-${name.replace(/\s/g, '-')}" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">${name}</label>
+                        `;
+                        sheetFilterContainer.appendChild(div);
+                    });
+                } else {
+                    sheetFilterContainer.innerHTML = '<p class="text-slate-400 text-xs">No sheets found.</p>';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading sheet filters:', error);
+            if (sheetFilterContainer) {
+                sheetFilterContainer.innerHTML = '<p class="text-red-500 text-xs">Error loading sheets.</p>';
+            }
+        }
+    };
+    
+    enableSummaryPageCheckbox.addEventListener('change', (e) => {
+        isSummaryPageEnabled = e.target.checked;
+        renderFinancialSummaryUI();
+        captureState();
+    });
+    
+    if(includeSignatureCheckbox) {
+        includeSignatureCheckbox.addEventListener('change', (e) => {
+            includeSignature = e.target.checked;
+            captureState();
+        });
+    }
+
+    financialSummaryContainer.addEventListener('input', (e) => {
+        if (e.target.classList.contains('summary-scope-desc')) {
+            const scopeType = e.target.dataset.scopetype;
+            summaryScopeDescriptions[scopeType] = e.target.value;
+            captureState();
+        }
+    });
+
+    if (newOfferBtn) {
+        newOfferBtn.addEventListener('click', async () => {
+            if (getDirty()) { 
+                const confirmed = await showConfirmModal(
+                    "You have unsaved changes that will be lost. Are you sure you want to start a new offer?",
+                    "Unsaved Changes",
+                    "bg-amber-600 hover:bg-amber-700",
+                    "Start New Offer"
+                );
+                if (!confirmed) {
+                    return;
+                }
+            }
+            resetOfferState();
+        });
+    }
+
+    if (selectedClientInfo) {
+        selectedClientInfo.addEventListener('input', (e) => {
+            if (!selectedClient) {
+                selectedClient = { name: '', address: '' };
+            }
+            if (e.target.id === 'client-name') {
+                selectedClient.name = e.target.textContent;
+            } else if (e.target.id === 'client-address') {
+                selectedClient.address = e.target.textContent;
+            }
+            captureState();
+        });
+    }
+
+    createSearchHandler({
+        searchInput: coverSearchInput,
+        resultsContainer: coverSearchResults,
+        apiEndpoint: `${API_URL}/get_covers`,
+        buildQuery: (query) => `q=${encodeURIComponent(query)}`,
+        renderResults: (covers, onSelect) => {
+            const fragment = document.createDocumentFragment();
+            covers.forEach(cover => {
+                const div = document.createElement('div');
+                div.textContent = cover;
+                div.className = 'search-result-item cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-600';
+                div.onclick = () => onSelect(cover);
+                fragment.appendChild(div);
+            });
+            return fragment;
+        },
+        onResultSelected: (cover) => {
+            selectedCover = cover;
+            renderSelectedCover();
+            coverSearchInput.value = '';
+            captureState();
+        }
+    });
+    
+    window.addEventListener('click', (e) => {
+        if (!columnsDropdown.classList.contains('hidden') && !columnsToggleBtn.contains(e.target) && !columnsDropdown.contains(e.target)) {
+            columnsDropdown.classList.add('hidden');
+        }
+        if (!sortDropdown.classList.contains('hidden') && !sortToggleBtn.contains(e.target) && !sortDropdown.contains(e.target)) {
+            sortDropdown.classList.add('hidden');
+        }
+        if (activeDescriptionCell && !activeDescriptionCell.contains(e.target)) {
+            const dropdown = document.getElementById('offer-description-suggestions');
+            if(dropdown && !dropdown.contains(e.target)) {
+                cleanupSuggestions();
+            }
+         }
+    });
+
+    if(addCustomItemBtn) {
+        addCustomItemBtn.addEventListener('click', () => {
+            if (!visibleColumns.local_supply_price) {
+                visibleColumns.local_supply_price = true;
+                setupColumnsDropdown();
+            }
+            const newItem = {
+                customId: `custom_${Date.now()}`,
+                description: '',
+                qty: 1,
+                unit: 'Pcs',
+                foreign_price_usd: '0.00',
+                foreign_total_usd: '0.00',
+                local_supply_price_bdt: '0.00',
+                local_supply_total_bdt: '0.00',
+                installation_price_bdt: '0.00',
+                installation_total_bdt: '0.00',
+                isCustom: true,
+                source_type: 'local', 
+                product_type: 'FPS'
+            };
+            offerItems.push(newItem);
+
+            if (!tncLocalSupplyCheckbox.checked) {
+                tncLocalSupplyCheckbox.checked = true;
+                tncLocalSupplyCheckbox.dispatchEvent(new Event('change'));
+            }
+
+            renderOfferTable();
+            updateActionButtons();
+            captureState();
+            
+            const newRow = offerTableBody.querySelector(`tr[data-item-index="${offerItems.length - 1}"]`);
+            if (newRow) {
+                const descCell = newRow.querySelector('[data-field="description"]');
+                if (descCell) {
+                    descCell.focus();
+                }
+            }
+        });
+    }
+
+    financialsSection.addEventListener('paste', e => {
+        if (e.target.matches('input[type="number"]')) {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            const sanitizedText = text.replace(/,/g, '');
+
+            const input = e.target;
+            const start = input.selectionStart;
+            const end = input.selectionEnd;
+            const oldValue = input.value;
+            const newValue = oldValue.substring(0, start) + sanitizedText + oldValue.substring(end);
+
+            if (!isNaN(newValue) && newValue !== '') {
+                input.value = newValue;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+    });
+
+    financialsSection.addEventListener('input', (e) => {
+        const target = e.target;
+        if (target.classList.contains('financial-input')) {
+            const type = target.dataset.type;
+            financials[type] = target.value;
+            updateFinancialSummary();
+            captureState();
+        }
+        if (target.isContentEditable && target.dataset.labelKey) {
+            const key = target.dataset.labelKey;
+            financialLabels[key] = target.textContent;
+            captureState();
+        }
+    });
+
+    const setupFinancialsUI = () => {
+        const allToggles = [
+            { useKey: 'use_freight', type: 'freight' },
+            { useKey: 'use_delivery', type: 'delivery' },
+            { useKey: 'use_discount_foreign', type: 'discount_foreign' },
+            { useKey: 'use_discount_local', type: 'discount_local' },
+            { useKey: 'use_discount_installation', type: 'discount_installation' }
+        ];
+
+        allToggles.forEach(({ useKey, type }) => {
+            const addBtn = financialsSection.querySelector(`.add-charge-btn[data-type="${type}"]`);
+            const removeBtn = financialsSection.querySelector(`.remove-charge-btn[data-type="${type}"]`);
+            const input = addBtn.closest('.flex').querySelector('.financial-input');
+            
+            const isVisible = financials[useKey];
+            
+            input.classList.toggle('hidden', !isVisible);
+            removeBtn.classList.toggle('hidden', !isVisible);
+            addBtn.classList.toggle('hidden', isVisible);
+        });
+        updateFinancialSummary();
+    };
+
+    financialsSection.addEventListener('click', (e) => {
+        const button = e.target.closest('button');
+        if(!button) return;
+        
+        const type = button.dataset.type;
+        if (!type) return;
+
+        let stateChanged = false;
+
+        if(button.classList.contains('add-charge-btn')) {
+            financials[`use_${type}`] = true;
+            stateChanged = true;
+        } else if(button.classList.contains('remove-charge-btn')) {
+            financials[`use_${type}`] = false;
+            
+            const input = button.closest('.flex').querySelector('.financial-input');
+            if (input) {
+                const valueKey = input.dataset.type;
+                financials[valueKey] = 0;
+                input.value = 0; 
+            }
+            stateChanged = true;
+        }
+
+        if(stateChanged) {
+            setupFinancialsUI();
+            captureState();
+        }
+    });
+    
+    if (coverUploadZone) {
+        coverUploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            coverUploadZone.classList.add('bg-sky-50', 'dark:bg-sky-900/50', 'border-sky-500');
+        });
+        coverUploadZone.addEventListener('dragleave', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            coverUploadZone.classList.remove('bg-sky-50', 'dark:bg-sky-900/50', 'border-sky-500');
+        });
+        coverUploadZone.addEventListener('drop', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            coverUploadZone.classList.remove('bg-sky-50', 'dark:bg-sky-900/50', 'border-sky-500');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleCoverUpload(files[0]);
+        });
+    }
+
+    if (coverFileInput) {
+        coverFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleCoverUpload(e.target.files[0]);
+        });
+    }
+
+    coverSearchInput.addEventListener('keyup', (e) => {
+        if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) return;
+        fetchAndDisplayCovers(e.target.value);
+    });
+
+    removeCoverBtn.addEventListener('click', () => {
+        selectedCover = null;
+        renderSelectedCover();
+        captureState();
+    });
+
+    createSearchHandler({
+        searchInput: clientSearchInput, resultsContainer: clientSearchResults, apiEndpoint: `${API_URL}/search_clients`,
+        buildQuery: (query) => `q=${encodeURIComponent(query)}`,
+        renderResults: renderClientResults, 
+        onResultSelected: (client) => {
+            selectedClient = { name: client.client_name, address: client.client_address };
+            document.getElementById('client-name').textContent = selectedClient.name;
+            document.getElementById('client-address').textContent = selectedClient.address;
+            selectedClientInfo.style.display = 'block';
+            clientSearchInput.value = selectedClient.name;
+            updateActionButtons();
+            suggestCovers();
+            captureState();
+        }
+    });
+
+    createSearchHandler({
+        searchInput: itemSearchInput, resultsContainer: itemSearchResults, loaderElement: itemSearchLoader, apiEndpoint: `${API_URL}/search_items`, currentUser, minQueryLength: 3,
+        buildQuery: (query) => {
+            const selectedSheets = Array.from(sheetFilterContainer.querySelectorAll('input[name="sheet_filter"]:checked'))
+                                        .map(cb => cb.value)
+                                        .join(',');
+
+            return `q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local'}&types=${encodeURIComponent(selectedSheets)}`;
+        },
+        renderResults: renderItemResults, 
+        onResultSelected: (item) => {
+            const newItem = {
+                ...item, qty: 1, unit: item.unit || 'Pcs',
+                foreign_price_usd: item.source_type === 'foreign' ? item.offer_price : 0.00,
+                local_supply_price_bdt: item.source_type === 'local' ? item.offer_price : 0.00,
+                installation_price_bdt: item.installation || 0.00,
+                po_price_usd: item.po_price || 0.00
+            };
+            newItem.foreign_total_usd = (newItem.qty * parseFloat(newItem.foreign_price_usd)).toFixed(2);
+            newItem.local_supply_total_bdt = (newItem.qty * parseFloat(newItem.local_supply_price_bdt)).toFixed(2);
+            newItem.installation_total_bdt = (newItem.qty * parseFloat(newItem.installation_price_bdt)).toFixed(2);
+            newItem.po_total_usd = (newItem.qty * parseFloat(newItem.po_price_usd)).toFixed(2);
+
+            if (newItem.source_type === 'local' && !visibleColumns.local_supply_price) {
+                visibleColumns.local_supply_price = true;
+                setupColumnsDropdown();
+            }
+
+            offerItems.push(newItem);
+
+            if (newItem.source_type === 'foreign' && !tncInternationalCheckbox.checked) {
+                tncInternationalCheckbox.checked = true;
+                tncInternationalCheckbox.dispatchEvent(new Event('change'));
+            } else if (newItem.source_type === 'local' && !tncLocalSupplyCheckbox.checked) {
+                tncLocalSupplyCheckbox.checked = true;
+                tncLocalSupplyCheckbox.dispatchEvent(new Event('change'));
+            }
+            
+            currentSortOrder = 'custom';
+            setupSortDropdown();
+            renderOfferTable(); 
+            renderOfferCategoryCheckboxes(); 
+            updateActionButtons();
+            itemSearchInput.focus(); 
+            captureState();
+        }
+    });
+    
+    if (sheetFilterContainer) {
+        sheetFilterContainer.addEventListener('change', (e) => {
+            if (e.target.name === 'sheet_filter') {
+                if (itemSearchInput.value.length >= 3) {
+                     itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
+                }
+            }
+        });
+    }
+
+    searchForeignCheckbox.addEventListener('change', (e) => {
+        searchSettings.foreign = e.target.checked;
+        if (itemSearchInput.value.length >= 3) itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
+        captureState();
+    });
+    searchLocalCheckbox.addEventListener('change', (e) => {
+        searchSettings.local = e.target.checked;
+        if (itemSearchInput.value.length >= 3) itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
+        captureState();
+    });
+    
+    offerTableBody.addEventListener('paste', e => {
+        const target = e.target;
+        const field = target.dataset.field;
+        const isNumericField = field && (field.includes('price') || field === 'qty');
+
+        if (target.matches('[contenteditable]') && isNumericField) {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            const sanitizedText = text.replace(/,/g, '');
+            document.execCommand('insertText', false, sanitizedText);
+        }
+    });
+
+    offerTableBody.addEventListener('input', (e) => {
+        const target = e.target;
+        const row = target.closest('tr'); if (!row) return;
+        const itemIndex = parseInt(row.dataset.itemIndex, 10);
+        const item = offerItems[itemIndex]; if (!item) return;
+
+        const field = target.dataset.field;
+        if (field) {
+            if (field === 'description') {
+                handleDescriptionInput(e);
+                item[field] = target.innerText;
+            } else {
+                item[field] = target.matches('[contenteditable]') ? target.innerHTML : target.value;
+            }
+            
+            const qty = parseFloat(item.qty || 1);
+            item.foreign_total_usd = (qty * parseFloat(item.foreign_price_usd || 0)).toFixed(2);
+            item.local_supply_total_bdt = (qty * parseFloat(item.local_supply_price_bdt || 0)).toFixed(2);
+            item.installation_total_bdt = (qty * parseFloat(item.installation_price_bdt || 0)).toFixed(2);
+            if (visibleColumns.po_price) item.po_total_usd = (qty * parseFloat(item.po_price_usd || 0)).toFixed(2);
+
+            const updateTotalCell = (totalField, value) => {
+                const cell = row.querySelector(`[data-field="${totalField}"]`);
+                if (cell) cell.textContent = value;
+            };
+            updateTotalCell('foreign_total_usd', item.foreign_total_usd);
+            updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt);
+            updateTotalCell('installation_total_bdt', item.installation_total_bdt);
+            if (visibleColumns.po_price) updateTotalCell('po_total_usd', item.po_total_usd);
+            updateFinancialSummary(); 
+            if(field === 'product_type') {
+                renderFinancialSummaryUI();
+            }
+            captureState();
+        }
+    });
+
+    offerTableBody.addEventListener('click', (e) => {
+        const button = e.target.closest('button');
+        if (!button) return;
+        
+        const row = button.closest('tr');
+        if (!row) return;
+
+        const itemIndex = parseInt(row.dataset.itemIndex, 10);
+
+        if (button.classList.contains('remove-item-btn')) {
+            offerItems.splice(itemIndex, 1);
+        } else if (button.classList.contains('move-item-up-btn')) {
+            if (itemIndex > 0) {
+                [offerItems[itemIndex], offerItems[itemIndex - 1]] = [offerItems[itemIndex - 1], offerItems[itemIndex]];
+                currentSortOrder = 'custom';
+                setupSortDropdown();
+            }
+        } else if (button.classList.contains('move-item-down-btn')) {
+            if (itemIndex < offerItems.length - 1) {
+                [offerItems[itemIndex], offerItems[itemIndex + 1]] = [offerItems[itemIndex + 1], offerItems[itemIndex]];
+                currentSortOrder = 'custom';
+                setupSortDropdown();
+            }
+        }
+
+        renderOfferTable();
+        renderOfferCategoryCheckboxes();
+        updateActionButtons();
+        captureState();
+    });
+
+    saveAsBtn.addEventListener('click', () => {
+        if (saveAsBtn.disabled) return;
+        
+        const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
+        const newName = NameController.generateOfferReference({
+            clientName: selectedClient.name,
+            categories: checkedCategories,
+            items: offerItems,
+            visibleColumns: visibleColumns
+        });
+
+        document.getElementById('save-as-type').value = 'offer';
+        document.getElementById('save-as-name').value = newName;
+        saveAsModal.classList.remove('hidden');
+    });
+    
+    saveProjectBtn.addEventListener('click', () => {
+        if (saveProjectBtn.disabled) return;
+        if (!currentProjectId) {
+            saveAsBtn.click();
+        } else {
+            handleSaveOffer(false);
+        }
+    });
+
+    exportPdfBtn.addEventListener('click', () => handleExport('pdf'));
+    exportXlsxBtn.addEventListener('click', () => handleExport('xlsx'));
+    
+    tncInternationalCheckbox.addEventListener('change', updateTncTextarea);
+    tncLocalSupplyCheckbox.addEventListener('change', updateTncTextarea);
+    tncLocalInstallationCheckbox.addEventListener('change', updateTncTextarea);
+
+    columnsToggleBtn.addEventListener('click', (e) => { 
+        e.stopPropagation(); 
+        columnsDropdown.classList.toggle('hidden'); 
+    });
+    columnsDropdown.addEventListener('change', (e) => { 
+        if (e.target.type === 'checkbox') { 
+            const col = e.target.dataset.col;
+            const isChecked = e.target.checked;
+            visibleColumns[col] = isChecked; 
+
+            const syncTncCheckbox = (tncCheckbox, shouldBeChecked) => {
+                if (shouldBeChecked && !tncCheckbox.checked) {
+                    tncCheckbox.checked = true;
+                    tncCheckbox.dispatchEvent(new Event('change'));
+                } else if (!shouldBeChecked && tncCheckbox.checked) {
+                    tncCheckbox.checked = false;
+                    tncCheckbox.dispatchEvent(new Event('change'));
+                }
+            };
+
+            if (col === 'foreign_price') syncTncCheckbox(tncInternationalCheckbox, isChecked);
+            else if (col === 'local_supply_price') syncTncCheckbox(tncLocalSupplyCheckbox, isChecked);
+            else if (col === 'installation_price') syncTncCheckbox(tncLocalInstallationCheckbox, isChecked);
+            renderOfferTable(); 
+            captureState();
+        } 
+    });
+    
+    sortToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sortDropdown.classList.toggle('hidden');
+    });
+
+    sortDropdown.addEventListener('change', (e) => {
+        if (e.target.name === 'sort_option') {
+            currentSortOrder = e.target.value;
+            renderOfferTable();
+            sortDropdown.classList.add('hidden');
+        }
+    });
+
+    window.addItemsToOffer = (itemsToAdd) => {
+        if (!itemsToAdd || itemsToAdd.length === 0) return;
+        itemsToAdd.forEach(item => {
+            const newItem = { ...item }; 
+            const qty = parseFloat(newItem.qty || 1);
+            newItem.foreign_total_usd = (qty * parseFloat(newItem.foreign_price_usd || 0)).toFixed(2);
+            newItem.local_supply_total_bdt = (qty * parseFloat(newItem.local_supply_price_bdt || 0)).toFixed(2);
+            newItem.installation_total_bdt = (qty * parseFloat(newItem.installation_price_bdt || 0)).toFixed(2);
+            newItem.po_total_usd = (qty * parseFloat(newItem.po_price_usd || 0)).toFixed(2);
+
+            if (newItem.source_type === 'foreign' && parseFloat(newItem.foreign_price_usd) > 0 && !tncInternationalCheckbox.checked) {
+                tncInternationalCheckbox.checked = true;
+                tncInternationalCheckbox.dispatchEvent(new Event('change'));
+            } else if (newItem.source_type === 'local' && parseFloat(newItem.local_supply_price_bdt) > 0 && !tncLocalSupplyCheckbox.checked) {
+                tncLocalSupplyCheckbox.checked = true;
+                tncLocalSupplyCheckbox.dispatchEvent(new Event('change'));
+            }
+            if (newItem.source_type === 'local' && !visibleColumns.local_supply_price) visibleColumns.local_supply_price = true;
+            if (parseFloat(newItem.installation_price_bdt) > 0 && !visibleColumns.installation_price) visibleColumns.installation_price = true;
+            offerItems.push(newItem);
+        });
+        setupColumnsDropdown(); 
+        renderOfferTable(); renderOfferCategoryCheckboxes(); updateActionButtons(); captureState();
+    };
+
+    window.handleOfferSaveAs = async (newName) => {
+        await handleSaveOffer(true, newName);
+    };
+
+    window.loadOfferData = (projectData) => {
+        currentProjectId = projectData.projectId;
+        currentReferenceNumber = projectData.referenceNumber;
+        updateProjectState(projectData);
+        selectedClient = projectData.client;
+        offerItems = projectData.items;
+        
+        const defaultFinancials = { 
+            freight_foreign_usd: 0, 
+            discount_foreign_usd: 0,
+            delivery_local_bdt: 0, 
+            discount_local_bdt: 0,
+            discount_installation_bdt: 0,
+            use_freight: false,
+            use_delivery: false,
+            use_discount_foreign: false,
+            use_discount_local: false,
+            use_discount_installation: false
+        };
+        financials = { ...defaultFinancials, ...(projectData.financials || {}) };
+
+        for (const key in financials) {
+            if (key.startsWith('use_')) continue;
+            const input = financialsSection.querySelector(`.financial-input[data-type="${key}"]`);
+            if (input) {
+                input.value = financials[key] || 0;
+            }
+        }
+        
+        financialLabels = projectData.financialLabels || getDefaultFinancialLabels();
+        searchSettings = projectData.searchSettings || { foreign: true, local: false };
+        selectedCover = projectData.selected_cover || null;
+        isSummaryPageEnabled = projectData.isSummaryPageEnabled === undefined ? true : projectData.isSummaryPageEnabled;
+        summaryScopeDescriptions = projectData.summaryScopeDescriptions || {};
+        includeSignature = projectData.includeSignature === undefined ? true : projectData.includeSignature;
+        
+        if (includeSignatureCheckbox) {
+            includeSignatureCheckbox.checked = includeSignature;
+        }
+
+        const loadedCols = projectData.visibleColumns || {};
+        visibleColumns.foreign_price = loadedCols.foreign_price === undefined ? true : loadedCols.foreign_price;
+        visibleColumns.po_price = !!loadedCols.po_price;
+        visibleColumns.local_supply_price = !!loadedCols.local_supply_price;
+        visibleColumns.installation_price = !!loadedCols.installation_price;
+
+        if(projectData.tncState) {
+            tncInternationalCheckbox.checked = projectData.tncState.international;
+            tncLocalSupplyCheckbox.checked = projectData.tncState.local_supply;
+            tncLocalInstallationCheckbox.checked = projectData.tncState.local_installation;
+            tncTextarea.value = projectData.tncState.value;
+        }
+        
+        offerProjectName.textContent = projectData.referenceNumber;
+        document.getElementById('client-name').textContent = selectedClient.name;
+        document.getElementById('client-address').textContent = selectedClient.address;
+        selectedClientInfo.style.display = 'block';
+        clientSearchInput.value = selectedClient.name;
+        searchForeignCheckbox.checked = searchSettings.foreign;
+        searchLocalCheckbox.checked = searchSettings.local;
+
+        updateFinancialLabelsInDOM();
+        setupFinancialsUI();
+        enableSummaryPageCheckbox.checked = isSummaryPageEnabled;
+        renderFinancialSummaryUI();
+        setupColumnsDropdown(); 
+        setupSortDropdown();
+        renderOfferTable();
+        updateActionButtons();
+        renderOfferCategoryCheckboxes(projectData.categories);
+        renderSelectedCover();
+        suggestCovers();
+
+        history = [];
+        historyIndex = -1;
+        setDirty(false);
+        setTimeout(() => captureState(), 50); 
+    };
+
+    setupColumnsDropdown();
+    setupSortDropdown();
+    resetOfferState();
+    loadSheetFilters();
+}
