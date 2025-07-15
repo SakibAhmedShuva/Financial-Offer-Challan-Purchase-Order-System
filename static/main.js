@@ -146,6 +146,38 @@ const initializeApp = () => {
     };
 
     // --- HELPER FUNCTIONS ---
+
+    // NEW: Audio and Title Notification Helpers
+    let titleInterval = null;
+    const originalTitle = document.title;
+
+    window.playNotificationSound = () => {
+        // NOTE: A sound file must exist at /static/audio/ting.mp3 for this to work.
+        const audio = new Audio('/static/audio/ting.mp3');
+        audio.play().catch(error => console.warn("Audio play was prevented by the browser.", error));
+    };
+    
+    const stopTitleNotification = () => {
+        if (titleInterval) {
+            clearInterval(titleInterval);
+            titleInterval = null;
+            document.title = originalTitle;
+        }
+    };
+
+    window.triggerTitleNotification = (message) => {
+        // Only blink the title if the window/tab is not currently focused
+        if (!document.hasFocus()) { 
+            stopTitleNotification(); // Stop any previous blinking
+            titleInterval = setInterval(() => {
+                document.title = document.title === originalTitle ? message : originalTitle;
+            }, 1000);
+        }
+    };
+
+    // Stop blinking and restore the title when the user returns to the tab
+    window.addEventListener('focus', stopTitleNotification);
+    
     const setDirty = (state) => {
         isDirty = state;
     };
@@ -159,6 +191,10 @@ const initializeApp = () => {
     });
 
     const showToast = (message, isError = false) => {
+        // NEW: Trigger audio and title notifications
+        window.playNotificationSound();
+        window.triggerTitleNotification('New Notification!');
+
         const toast = document.createElement('div');
         toast.className = `toast ${isError ? 'error' : ''}`;
         toast.textContent = message;
