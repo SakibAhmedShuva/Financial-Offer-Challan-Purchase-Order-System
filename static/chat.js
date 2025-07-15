@@ -57,7 +57,6 @@ function initializeChatModule(deps) {
         console.log('Disconnected from chat server.');
     });
     
-    // ADDED: Delegated event listener for the "Process with AI" button
     chatBoxesContainer.addEventListener('click', async (e) => {
         const processButton = e.target.closest('.ai-process-file-btn');
         if (processButton) {
@@ -208,6 +207,31 @@ function initializeChatModule(deps) {
                 handleFileUpload(file, userEmail, chatBox);
             }
         });
+        
+        // ADDED: Paste event listener for handling clipboard images
+        const textInput = chatBox.querySelector('input[type="text"]');
+        textInput.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || window.clipboardData).items;
+            let imageFile = null;
+
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
+                    imageFile = items[i].getAsFile();
+                    break;
+                }
+            }
+
+            if (imageFile) {
+                e.preventDefault(); // Prevent pasting file path as text
+                
+                // Give the pasted image a generic name with a timestamp
+                const timestamp = new Date().toISOString().replace(/[-:.]/g, '');
+                const renamedFile = new File([imageFile], `screenshot-${timestamp}.png`, { type: imageFile.type });
+                
+                handleFileUpload(renamedFile, userEmail, chatBox);
+            }
+        });
+
 
         const messagesContainer = chatBox.querySelector('.chat-messages');
         messagesContainer.innerHTML = `<div class="loader-container text-center p-4"><div class="loader !w-6 !h-6 mx-auto"></div></div>`;
@@ -276,7 +300,6 @@ function initializeChatModule(deps) {
         }
     }
 
-    // MODIFIED: This function now adds a "Process with AI" button for XLSX files.
     function addMessageToBox(partnerEmail, senderEmail, messageObject, timestamp, isHistory = false) {
         const chat = activeChats[partnerEmail];
         if (!chat) return;
