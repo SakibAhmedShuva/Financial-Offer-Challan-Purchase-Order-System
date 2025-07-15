@@ -28,26 +28,29 @@ function initializeChatModule(deps) {
     });
 
     window.socket.on('new_message', (data) => {
-        const { sender_email, recipient_email, message, timestamp } = data; // MODIFIED: Get timestamp
+        const { sender_email, recipient_email, message, timestamp } = data;
         const chatPartnerEmail = sender_email === currentUser.email ? recipient_email : sender_email;
  
         const chat = activeChats[chatPartnerEmail];
         
-        // NEW: Play sound for incoming messages
+        // NEW: Play sound and blink title for incoming messages
         if (sender_email !== currentUser.email) {
-            playNotificationSound();
+            if(window.playNotificationSound) window.playNotificationSound();
+            if(window.triggerTitleNotification) window.triggerTitleNotification('New Message!');
         }
 
         if (!chat) {
             const allUsers = JSON.parse(sessionStorage.getItem('all_users') || '[]');
             let user = allUsers.find(u => u.email === chatPartnerEmail) || { email: chatPartnerEmail, name: chatPartnerEmail.split('@')[0] };
-            openChatBox(user, true);
+            openChatBox(user, true).then(() => {
+                 addMessageToBox(chatPartnerEmail, sender_email, message, timestamp);
+            });
         } else if (chat.state === 'minimized') {
             chat.unread++;
-            addMessageToBox(chatPartnerEmail, sender_email, message, timestamp); // MODIFIED: Pass timestamp
+            addMessageToBox(chatPartnerEmail, sender_email, message, timestamp);
             updateMinimizedBadge(chatPartnerEmail);
         } else {
-            addMessageToBox(chatPartnerEmail, sender_email, message, timestamp); // MODIFIED: Pass timestamp
+            addMessageToBox(chatPartnerEmail, sender_email, message, timestamp);
         }
     });
 
@@ -210,7 +213,7 @@ function initializeChatModule(deps) {
 
         const timeString = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        // MODIFIED: Added a span for the timestamp
+        // MODIFIED: Added a paragraph for the timestamp below the message
         messageDiv.innerHTML = `
             <div class="max-w-xs p-2 rounded-lg ${isMe ? 'bg-sky-500 text-white' : 'bg-slate-200 dark:bg-slate-600'}">
                 <p class="text-sm break-words">${message}</p>
