@@ -213,9 +213,9 @@ function initializeChatModule(deps) {
 
         const timeString = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        // MODIFIED: Added a paragraph for the timestamp below the message
+        // MODIFIED: Changed max-w-xs to max-w-[80%] to prevent overflow.
         messageDiv.innerHTML = `
-            <div class="max-w-xs p-2 rounded-lg ${isMe ? 'bg-sky-500 text-white' : 'bg-slate-200 dark:bg-slate-600'}">
+            <div class="max-w-[80%] p-2 rounded-lg ${isMe ? 'bg-sky-500 text-white' : 'bg-slate-200 dark:bg-slate-600'}">
                 <p class="text-sm break-words">${message}</p>
                 <p class="text-xs text-right mt-1 ${isMe ? 'text-slate-200/80' : 'text-slate-500 dark:text-slate-400'}">${timeString}</p>
             </div>
