@@ -1,0 +1,493 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+		"name": "NOW GE Financial Offer Generator API",
+		"description": "A collection of API endpoints for the Flask-based financial offer generation tool, based on the provided app.py file.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"adminpass\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"login"
+							]
+						},
+						"description": "Authenticates a user and returns their details. Use `admin@example.com` with password `adminpass` for admin access, or `user@example.com` with password `userpass` for standard access, as defined in the dummy data."
+					},
+					"response": [
+						{
+							"name": "Successful Admin Login",
+							"originalRequest": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"adminpass\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/login",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"login"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"success\": true,\n    \"user\": {\n        \"sl\": 1,\n        \"name\": \"Admin User\",\n        \"email\": \"admin@example.com\",\n        \"password\": \"adminpass\",\n        \"role\": \"admin\"\n    }\n}"
+						}
+					]
+				}
+			],
+			"description": "Endpoints related to user authentication."
+		},
+		{
+			"name": "Search",
+			"item": [
+				{
+					"name": "Search Items",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/search_items?q=fire hose&role=admin",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"search_items"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "fire hose",
+									"description": "The search term for the item."
+								},
+								{
+									"key": "role",
+									"value": "admin",
+									"description": "Set to 'admin' to include 'po_price' in the results. Any other value will hide it."
+								}
+							]
+						},
+						"description": "Performs a vector search for items. The search query 'q' is mandatory. The 'role' parameter determines if sensitive price information is returned."
+					},
+					"response": [
+						{
+							"name": "Sample Item Search Result",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/search_items?q=fire hose&role=admin",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"search_items"
+									],
+									"query": [
+										{
+											"key": "q",
+											"value": "fire hose"
+										},
+										{
+											"key": "role",
+											"value": "admin"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "[\n    {\n        \"description\": \"FIRE HOSE, Synethetic heavy duty 30Mtrs long with Alum. coupling\",\n        \"item_code\": \"FH-01\",\n        \"make\": \"NAFFCO\",\n        \"model\": \"KD-12\",\n        \"offer_price\": 150.00,\n        \"po_price\": 120.00,\n        \"product_type\": \"Fire Fighting\",\n        \"approvals\": \"UL/FM\",\n        \"search_text\": \"NAFFCO Fire Fighting UL/FM FH-01 FIRE HOSE, Synethetic heavy duty 30Mtrs long with Alum. coupling KD-12\"\n    }\n]"
+						}
+					]
+				},
+				{
+					"name": "Search Clients",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/search_clients?q=Global",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"search_clients"
+							],
+							"query": [
+								{
+									"key": "q",
+									"value": "Global",
+									"description": "The search term for the client's name or address."
+								}
+							]
+						},
+						"description": "Performs a vector search for clients."
+					},
+					"response": [
+						{
+							"name": "Sample Client Search Result",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/search_clients?q=Global",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"search_clients"
+									],
+									"query": [
+										{
+											"key": "q",
+											"value": "Global"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "[\n    {\n        \"sl\": 1,\n        \"client_name\": \"Global Construction Ltd.\",\n        \"client_address\": \"123 Business Bay, Dubai\",\n        \"search_text\": \"Global Construction Ltd. 123 Business Bay, Dubai\"\n    }\n]"
+						}
+					]
+				}
+			],
+			"description": "Endpoints for searching items and clients using vector search."
+		},
+		{
+			"name": "File Generation",
+			"item": [
+				{
+					"name": "Generate Filename",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"client_name\": \"Modern Builders Inc.\",\n    \"categories\": [\"Fire Alarm\", \"Pumps\", \"CCTV\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/generate_filename",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"generate_filename"
+							]
+						},
+						"description": "Generates a unique, structured filename for a new financial offer based on client name and item categories."
+					},
+					"response": [
+						{
+							"name": "Sample Generated Filename",
+							"originalRequest": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"client_name\": \"Modern Builders Inc.\",\n    \"categories\": [\"Fire Alarm\", \"Pumps\", \"CCTV\"]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/generate_filename",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"generate_filename"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"filename\": \"FO_CCTV_Fire Alarm_Pumps_MBI_253006GE42PQR\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Export as PDF",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user\": {\n        \"name\": \"Admin User\",\n        \"role\": \"admin\"\n    },\n    \"client\": {\n        \"name\": \"Global Construction Ltd.\",\n        \"address\": \"123 Business Bay, Dubai\"\n    },\n    \"items\": [\n        {\n            \"description\": \"Item A: Standard Fire Extinguisher\",\n            \"price\": \"100.00\",\n            \"unit\": \"pcs\",\n            \"total\": \"1000.00\",\n            \"product_type\": \"Fire Fighting\"\n        },\n        {\n            \"description\": \"Item B: Advanced Smoke Detector with special characters like / & ç\",\n            \"price\": \"250.50\",\n            \"unit\": \"pcs\",\n            \"total\": \"5010.00\",\n            \"product_type\": \"Fire Alarm\"\n        }\n    ],\n    \"filename\": \"FO_FireAlarm_FireFighting_GLOB_253006GE12ABC\",\n    \"categories\": [\"Fire Fighting\", \"Fire Alarm\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/export_pdf",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"export_pdf"
+							]
+						},
+						"description": "Generates a PDF financial offer. The response will be a file download. Use Postman's 'Send and Download' feature to save the PDF."
+					},
+					"response": []
+				},
+				{
+					"name": "Export as Excel",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user\": {\n        \"name\": \"Admin User\",\n        \"role\": \"admin\"\n    },\n    \"client\": {\n        \"name\": \"Global Construction Ltd.\",\n        \"address\": \"123 Business Bay, Dubai\"\n    },\n    \"items\": [\n        {\n            \"description\": \"Item A: Standard Fire Extinguisher\",\n            \"price\": \"100.00\",\n            \"po_price\": \"85.00\",\n            \"unit\": \"pcs\",\n            \"total\": \"1000.00\",\n            \"product_type\": \"Fire Fighting\"\n        },\n        {\n            \"description\": \"Item B: Advanced Smoke Detector\",\n            \"price\": \"250.50\",\n            \"po_price\": \"210.00\",\n            \"unit\": \"pcs\",\n            \"total\": \"5010.00\",\n            \"product_type\": \"Fire Alarm\"\n        },\n        {\n            \"description\": \"Item C: Emergency Exit Light\",\n            \"price\": \"75.00\",\n            \"po_price\": \"60.00\",\n            \"unit\": \"pcs\",\n            \"total\": \"750.00\",\n            \"product_type\": \"Fire Alarm\"\n        }\n    ],\n    \"filename\": \"FO_FireAlarm_FireFighting_GLOB_253006GE12ABC\",\n    \"categories\": [\"Fire Fighting\", \"Fire Alarm\"],\n    \"user_role\": \"admin\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/export_excel",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"export_excel"
+							]
+						},
+						"description": "Generates an Excel (.xlsx) financial offer. Items will be separated into different sheets based on their `product_type`. If the user role is 'admin', the 'PO Price' column will be included. Use Postman's 'Send and Download' feature to save the file."
+					},
+					"response": []
+				},
+				{
+					"name": "Download Generated FO",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/download_fo/FO_FireAlarm_FireFighting_GLOB_253006GE12ABC.xlsx",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"download_fo",
+								"FO_FireAlarm_FireFighting_GLOB_253006GE12ABC.xlsx"
+							]
+						},
+						"description": "Downloads a previously generated financial offer file from the server's `data_storage/FOS` directory.\n\nYou must replace the filename in the URL with a valid one that exists on the server (e.g., one generated from an export request or retrieved from the activity log)."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for creating and downloading financial offer files."
+		},
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "Get Activity Log",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/get_activity_log?role=admin",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"get_activity_log"
+							],
+							"query": [
+								{
+									"key": "role",
+									"value": "admin",
+									"description": "Must be 'admin' to access this endpoint."
+								}
+							]
+						},
+						"description": "(Admin Only) Retrieves a log of all financial offers that have been generated."
+					},
+					"response": [
+						{
+							"name": "Sample Activity Log",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/get_activity_log?role=admin",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"get_activity_log"
+									],
+									"query": [
+										{
+											"key": "role",
+											"value": "admin"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "[\n    {\n        \"sl\": \"1\",\n        \"date\": \"2025-06-30 10:30:00\",\n        \"user_name\": \"Admin User\",\n        \"fo_name\": \"FO_FireAlarm_FireFighting_GLOB_253006GE12ABC\",\n        \"file_path\": \"FO_FireAlarm_FireFighting_GLOB_253006GE12ABC.xlsx\"\n    }\n]"
+						}
+					]
+				},
+				{
+					"name": "Re-initialize Data",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"role\": \"admin\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/reinitialize",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reinitialize"
+							]
+						},
+						"description": "(Admin Only) Forces the application to delete the existing search indexes and rebuild them from the source Excel and CSV files. This is useful after updating the source data files."
+					},
+					"response": [
+						{
+							"name": "Successful Re-initialization",
+							"originalRequest": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"role\": \"admin\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/reinitialize",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"reinitialize"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"success\": true,\n    \"message\": \"Data re-initialized successfully.\"\n}"
+						}
+					]
+				}
+			],
+			"description": "Endpoints restricted to users with the 'admin' role."
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:5001",
+			"type": "string",
+			"description": "The base URL of the Flask application."
+		}
+	]
+}
