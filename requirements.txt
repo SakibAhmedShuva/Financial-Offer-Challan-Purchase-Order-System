@@ -1,0 +1,15 @@
+faiss_cpu==1.10.0
+fitz==0.0.1.dev2
+Flask==3.1.1
+Flask_Cors==5.0.0
+Flask_SocketIO==5.4.1
+fpdf==1.7.2
+num2words==0.5.14
+numpy==1.23.5
+openpyxl==3.1.5
+pandas==2.3.1
+PyPDF2==3.0.1
+python-dotenv==1.1.1
+reportlab==4.4.2
+sentence_transformers==3.4.0
+Werkzeug==3.1.3
