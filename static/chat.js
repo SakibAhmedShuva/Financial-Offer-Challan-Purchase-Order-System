@@ -56,6 +56,35 @@ function initializeChatModule(deps) {
     window.socket.on('disconnect', () => {
         console.log('Disconnected from chat server.');
     });
+    
+    // ADDED: Delegated event listener for the "Process with AI" button
+    chatBoxesContainer.addEventListener('click', async (e) => {
+        const processButton = e.target.closest('.ai-process-file-btn');
+        if (processButton) {
+            e.preventDefault();
+            const fileUrl = processButton.dataset.fileUrl;
+            const fileName = processButton.dataset.fileName;
+
+            if (window.loadFileInAiHelper) {
+                try {
+                    showToast(`Loading "${fileName}" into AI Helper...`);
+                    // Fetch the file from its URL to reconstruct the File object
+                    const response = await fetch(API_URL + fileUrl);
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const blob = await response.blob();
+                    const file = new File([blob], fileName, { type: blob.type });
+
+                    // Call the global function to pass the file to the AI Helper module
+                    window.loadFileInAiHelper(file);
+                } catch (err) {
+                    showToast('Failed to load file for AI processing.', true);
+                    console.error("Error fetching file for AI Helper:", err);
+                }
+            } else {
+                showToast('AI Helper module is not ready.', true);
+            }
+        }
+    });
 
     // --- UI Rendering and Management ---
 
@@ -172,7 +201,6 @@ function initializeChatModule(deps) {
             }
         });
         
-        // ADDED: Listener for file input
         const fileInput = chatBox.querySelector(`#${uniqueFileId}`);
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -204,12 +232,10 @@ function initializeChatModule(deps) {
         }
     }
     
-    // ADDED: Function to handle file upload process
     async function handleFileUpload(file, recipientEmail, chatBox) {
         const formData = new FormData();
         formData.append('file', file);
 
-        // Show a temporary "uploading" message
         const tempId = `temp-upload-${Date.now()}`;
         const tempMessageHTML = `
             <div id="${tempId}" class="w-full flex justify-end">
@@ -227,7 +253,6 @@ function initializeChatModule(deps) {
             });
             const result = await response.json();
             
-            // Remove temporary message
             document.getElementById(tempId)?.remove();
 
             if (result.success) {
@@ -251,7 +276,7 @@ function initializeChatModule(deps) {
         }
     }
 
-    // MODIFIED: Function to render different message types
+    // MODIFIED: This function now adds a "Process with AI" button for XLSX files.
     function addMessageToBox(partnerEmail, senderEmail, messageObject, timestamp, isHistory = false) {
         const chat = activeChats[partnerEmail];
         if (!chat) return;
@@ -282,7 +307,10 @@ function initializeChatModule(deps) {
         
         switch (messageObject.type) {
             case 'file':
-                const isImage = imageExtensions.some(ext => messageObject.filename.toLowerCase().endsWith(ext));
+                const lowerCaseFilename = messageObject.filename.toLowerCase();
+                const isImage = imageExtensions.some(ext => lowerCaseFilename.endsWith(ext));
+                const isExcel = lowerCaseFilename.endsWith('.xlsx') || lowerCaseFilename.endsWith('.xls');
+
                 if (isImage) {
                     messageContentHTML = `
                         <a href="${API_URL}${messageObject.url}" target="_blank" rel="noopener noreferrer">
@@ -291,6 +319,11 @@ function initializeChatModule(deps) {
                     `;
                 } else {
                     const fileSize = messageObject.size ? `(${(messageObject.size / 1024).toFixed(1)} KB)` : '';
+                    const aiButtonHTML = isExcel ? 
+                        `<button class="ai-process-file-btn text-xs bg-indigo-500 text-white rounded-md px-2 py-1 mt-2 hover:bg-indigo-600 transition-colors w-full flex items-center justify-center gap-2" data-file-url="${messageObject.url}" data-file-name="${messageObject.filename}">
+                            <i class="fas fa-magic"></i> Process with AI
+                         </button>` : '';
+
                     messageContentHTML = `
                         <a href="${API_URL}${messageObject.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 p-2 bg-slate-300/50 dark:bg-slate-500/50 rounded-md hover:bg-slate-300 dark:hover:bg-slate-500">
                             <i class="fas fa-file-alt text-xl"></i>
@@ -299,12 +332,13 @@ function initializeChatModule(deps) {
                                 <p class="text-xs">${fileSize}</p>
                             </div>
                         </a>
+                        ${aiButtonHTML}
                     `;
                 }
                 break;
             case 'text':
             default:
-                messageContentHTML = `<p class="text-sm break-words">${messageObject.content}</p>`;
+                messageContentHTML = `<p class="text-sm break-words">${messageObject.content || ''}</p>`;
                 break;
         }
 
