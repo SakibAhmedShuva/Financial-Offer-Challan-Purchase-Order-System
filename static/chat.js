@@ -33,7 +33,6 @@ function initializeChatModule(deps) {
  
         const chat = activeChats[chatPartnerEmail];
         
-        // NEW: Play sound and blink title for incoming messages
         if (sender_email !== currentUser.email) {
             if(window.playNotificationSound) window.playNotificationSound();
             if(window.triggerTitleNotification) window.triggerTitleNotification('New Message!');
@@ -115,14 +114,16 @@ function initializeChatModule(deps) {
             if (activeChats[userEmail].state === 'minimized') {
                 restoreChat(userEmail);
             }
-            activeChats[userEmail].element.querySelector('input').focus();
+            activeChats[userEmail].element.querySelector('input[type="text"]').focus();
             return;
         }
 
         const chatBox = document.createElement('div');
         chatBox.className = 'chat-box w-72 h-96 bg-white dark:bg-slate-800 rounded-t-lg shadow-xl flex flex-col pointer-events-auto';
         chatBox.dataset.chatWith = userEmail;
-        chatBox.dataset.lastMessageDate = ''; // NEW: Initialize dataset for date tracking
+        chatBox.dataset.lastMessageDate = '';
+
+        const uniqueFileId = `chat-file-input-${userEmail.replace(/[^a-zA-Z0-9]/g, '')}`;
 
         chatBox.innerHTML = `
             <div class="chat-header flex justify-between items-center p-2 bg-slate-700 text-white rounded-t-lg cursor-pointer">
@@ -130,9 +131,16 @@ function initializeChatModule(deps) {
                 <button class="close-chat-btn text-lg leading-none px-2 hover:text-red-400">&times;</button>
             </div>
             <div class="chat-messages flex-1 p-2 space-y-2 overflow-y-auto"></div>
-            <div class="chat-input p-2">
-                <form class="chat-form">
-                    <input type="text" placeholder="Type a message..." class="w-full p-2 border rounded-md bg-slate-100 dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm">
+            <div class="chat-input p-2 border-t dark:border-slate-700">
+                <form class="chat-form flex items-center gap-2">
+                    <label for="${uniqueFileId}" class="cursor-pointer text-slate-500 hover:text-sky-500 p-2 transition-colors">
+                        <i class="fas fa-paperclip"></i>
+                    </label>
+                    <input type="file" id="${uniqueFileId}" class="hidden">
+                    <input type="text" placeholder="Type a message..." class="w-full p-2 border rounded-md bg-slate-100 dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm flex-grow">
+                    <button type="submit" class="p-2 text-sky-500 hover:text-sky-600 transition-colors" title="Send Message">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
                 </form>
             </div>
         `;
@@ -152,14 +160,24 @@ function initializeChatModule(deps) {
 
         chatBox.querySelector('.chat-form').addEventListener('submit', (e) => {
             e.preventDefault();
-            const input = e.target.querySelector('input');
-            const message = input.value.trim();
-            if (message) {
+            const input = e.target.querySelector('input[type="text"]');
+            const messageContent = input.value.trim();
+            if (messageContent) {
+                const messageObject = { type: 'text', content: messageContent };
                 window.socket.emit('private_message', {
                     recipient_email: userEmail,
-                    message: message
+                    message: messageObject
                 });
                 input.value = '';
+            }
+        });
+        
+        // ADDED: Listener for file input
+        const fileInput = chatBox.querySelector(`#${uniqueFileId}`);
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileUpload(file, userEmail, chatBox);
             }
         });
 
@@ -174,7 +192,6 @@ function initializeChatModule(deps) {
                     data.history.forEach(msg => {
                         addMessageToBox(userEmail, msg.sender_email, msg.message, msg.timestamp, true);
                     });
-                     // Scroll to bottom after loading history
                     messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 }
             } catch (err) {
@@ -186,8 +203,56 @@ function initializeChatModule(deps) {
             if(loader) loader.remove();
         }
     }
+    
+    // ADDED: Function to handle file upload process
+    async function handleFileUpload(file, recipientEmail, chatBox) {
+        const formData = new FormData();
+        formData.append('file', file);
 
-    function addMessageToBox(partnerEmail, senderEmail, message, timestamp, isHistory = false) {
+        // Show a temporary "uploading" message
+        const tempId = `temp-upload-${Date.now()}`;
+        const tempMessageHTML = `
+            <div id="${tempId}" class="w-full flex justify-end">
+                <div class="max-w-[80%] p-2 rounded-lg bg-sky-500/50 text-white animate-pulse">
+                    <p class="text-sm break-words"><i>Uploading ${file.name}...</i></p>
+                </div>
+            </div>
+        `;
+        chatBox.querySelector('.chat-messages').insertAdjacentHTML('beforeend', tempMessageHTML);
+
+        try {
+            const response = await fetch(`${API_URL}/upload_chat_attachment`, {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            
+            // Remove temporary message
+            document.getElementById(tempId)?.remove();
+
+            if (result.success) {
+                const messageObject = { 
+                    type: 'file', 
+                    url: result.url,
+                    filename: result.filename,
+                    size: file.size
+                };
+                window.socket.emit('private_message', {
+                    recipient_email: recipientEmail,
+                    message: messageObject
+                });
+            } else {
+                showToast(result.message || 'File upload failed.', true);
+            }
+        } catch (error) {
+            document.getElementById(tempId)?.remove();
+            showToast('An error occurred during upload.', true);
+            console.error('File upload error:', error);
+        }
+    }
+
+    // MODIFIED: Function to render different message types
+    function addMessageToBox(partnerEmail, senderEmail, messageObject, timestamp, isHistory = false) {
         const chat = activeChats[partnerEmail];
         if (!chat) return;
 
@@ -198,7 +263,6 @@ function initializeChatModule(deps) {
         const messageDate = new Date(timestamp).toDateString();
         const lastMessageDate = chat.element.dataset.lastMessageDate;
 
-        // NEW: Add a date separator if the date has changed
         if (messageDate !== lastMessageDate) {
             const dateSeparator = document.createElement('div');
             dateSeparator.className = 'w-full text-center my-2';
@@ -213,10 +277,40 @@ function initializeChatModule(deps) {
 
         const timeString = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        // MODIFIED: Changed max-w-xs to max-w-[80%] to prevent overflow.
+        let messageContentHTML = '';
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+        
+        switch (messageObject.type) {
+            case 'file':
+                const isImage = imageExtensions.some(ext => messageObject.filename.toLowerCase().endsWith(ext));
+                if (isImage) {
+                    messageContentHTML = `
+                        <a href="${API_URL}${messageObject.url}" target="_blank" rel="noopener noreferrer">
+                            <img src="${API_URL}${messageObject.url}" alt="${messageObject.filename}" class="max-w-full h-auto rounded-md my-1">
+                        </a>
+                    `;
+                } else {
+                    const fileSize = messageObject.size ? `(${(messageObject.size / 1024).toFixed(1)} KB)` : '';
+                    messageContentHTML = `
+                        <a href="${API_URL}${messageObject.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 p-2 bg-slate-300/50 dark:bg-slate-500/50 rounded-md hover:bg-slate-300 dark:hover:bg-slate-500">
+                            <i class="fas fa-file-alt text-xl"></i>
+                            <div>
+                                <p class="text-sm font-semibold break-all">${messageObject.filename}</p>
+                                <p class="text-xs">${fileSize}</p>
+                            </div>
+                        </a>
+                    `;
+                }
+                break;
+            case 'text':
+            default:
+                messageContentHTML = `<p class="text-sm break-words">${messageObject.content}</p>`;
+                break;
+        }
+
         messageDiv.innerHTML = `
             <div class="max-w-[80%] p-2 rounded-lg ${isMe ? 'bg-sky-500 text-white' : 'bg-slate-200 dark:bg-slate-600'}">
-                <p class="text-sm break-words">${message}</p>
+                ${messageContentHTML}
                 <p class="text-xs text-right mt-1 ${isMe ? 'text-slate-200/80' : 'text-slate-500 dark:text-slate-400'}">${timeString}</p>
             </div>
         `;
@@ -226,6 +320,7 @@ function initializeChatModule(deps) {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
     }
+
 
     function closeChat(userEmail) {
         const chat = activeChats[userEmail];
@@ -267,10 +362,9 @@ function initializeChatModule(deps) {
             chat.minimizedElement.remove();
             chat.minimizedElement = null;
         }
-        // Scroll to the bottom when restoring to see the latest messages
         const messagesContainer = chat.element.querySelector('.chat-messages');
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        chat.element.querySelector('input').focus();
+        chat.element.querySelector('input[type="text"]').focus();
     }
 
     function updateMinimizedBadge(userEmail) {
