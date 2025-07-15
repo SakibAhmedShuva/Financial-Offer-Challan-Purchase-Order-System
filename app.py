@@ -1360,7 +1360,6 @@ def convert_to_words_endpoint():
     })
 
 # --- SocketIO Chat Handlers ---
-# ADDED: Endpoint to upload chat files
 @app.route('/upload_chat_attachment', methods=['POST'])
 def upload_chat_attachment():
     if 'file' not in request.files:
@@ -1387,11 +1386,17 @@ def upload_chat_attachment():
         print(f"Error uploading chat file: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# ADDED: Endpoint to serve uploaded chat files
+# MODIFIED: Endpoint now sets the correct download name
 @app.route('/chat_attachment/<path:filename>')
 def get_chat_attachment(filename):
     try:
-        return send_from_directory(CONFIG['CHAT_ATTACHMENTS_DIR'], filename)
+        original_name = request.args.get('original_name', filename)
+        return send_from_directory(
+            CONFIG['CHAT_ATTACHMENTS_DIR'], 
+            filename, 
+            as_attachment=True, 
+            download_name=original_name
+        )
     except FileNotFoundError:
         return "File not found.", 404
 
@@ -1431,7 +1436,6 @@ def handle_disconnect():
             online_user_emails = list(online_users.keys())
             emit('update_user_list', {'all_users': all_users_list, 'online_users': online_user_emails}, broadcast=True)
 
-# MODIFIED: Chat handler to support structured messages (text or file)
 @socketio.on('private_message')
 def handle_private_message(data):
     recipient_email = data.get('recipient_email')
@@ -1469,7 +1473,6 @@ def handle_private_message(data):
         # Send confirmation back to sender
         emit('new_message', {**message_payload, 'recipient_email': recipient_email}, to=request.sid)
 
-# MODIFIED: History endpoint to parse JSON messages
 @app.route('/chat_history/<user1_email>/<user2_email>')
 def get_chat_history(user1_email, user2_email):
     history = []
