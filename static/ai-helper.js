@@ -25,7 +25,7 @@ const initializeAiHelperModule = (dependencies) => {
 
 
     // Dependencies from main.js
-    const { API_URL, showToast, currentUser, setDirty, saveAsModal } = dependencies;
+    const { API_URL, showToast, currentUser, setDirty, saveAsModal, switchTab } = dependencies;
 
     // --- State ---
     let descriptionColumnIndex = -1, quantityColumnIndex = -1, unitColumnIndex = -1, unitPriceColumnIndex = -1;
@@ -79,6 +79,19 @@ const initializeAiHelperModule = (dependencies) => {
 
 
     // --- FUNCTIONS ---
+    
+    // ADDED: Expose a function to the window to be called from other modules
+    window.loadFileInAiHelper = async (file) => {
+        if (!file) {
+            showToast('No file provided to process.', true);
+            return;
+        }
+        await switchTab('ai-helper');
+        lastSelectedFile = file;
+        // Use a small timeout to ensure the tab has switched before clicking
+        setTimeout(() => processBtn.click(), 100);
+    };
+
     function resetAiHelperState() {
         fileInput.value = '';
         lastSelectedFile = null;
