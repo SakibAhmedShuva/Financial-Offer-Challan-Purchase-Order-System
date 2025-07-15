@@ -68,7 +68,7 @@ function initializeChatModule(deps) {
                 try {
                     showToast(`Loading "${fileName}" into AI Helper...`);
                     // Fetch the file from its URL to reconstruct the File object
-                    const response = await fetch(API_URL + fileUrl);
+                    const response = await fetch(`${API_URL}${fileUrl}?original_name=${encodeURIComponent(fileName)}`);
                     if (!response.ok) throw new Error('Network response was not ok');
                     const blob = await response.blob();
                     const file = new File([blob], fileName, { type: blob.type });
@@ -208,8 +208,8 @@ function initializeChatModule(deps) {
             }
         });
         
-        // ADDED: Paste event listener for handling clipboard images
         const textInput = chatBox.querySelector('input[type="text"]');
+        // RE-ADDED: Paste event listener for handling clipboard images
         textInput.addEventListener('paste', (e) => {
             const items = (e.clipboardData || window.clipboardData).items;
             let imageFile = null;
@@ -333,10 +333,12 @@ function initializeChatModule(deps) {
                 const lowerCaseFilename = messageObject.filename.toLowerCase();
                 const isImage = imageExtensions.some(ext => lowerCaseFilename.endsWith(ext));
                 const isExcel = lowerCaseFilename.endsWith('.xlsx') || lowerCaseFilename.endsWith('.xls');
+                
+                const downloadUrl = `${API_URL}${messageObject.url}?original_name=${encodeURIComponent(messageObject.filename)}`;
 
                 if (isImage) {
                     messageContentHTML = `
-                        <a href="${API_URL}${messageObject.url}" target="_blank" rel="noopener noreferrer">
+                        <a href="${downloadUrl}" target="_blank" rel="noopener noreferrer">
                             <img src="${API_URL}${messageObject.url}" alt="${messageObject.filename}" class="max-w-full h-auto rounded-md my-1">
                         </a>
                     `;
@@ -348,7 +350,7 @@ function initializeChatModule(deps) {
                          </button>` : '';
 
                     messageContentHTML = `
-                        <a href="${API_URL}${messageObject.url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 p-2 bg-slate-300/50 dark:bg-slate-500/50 rounded-md hover:bg-slate-300 dark:hover:bg-slate-500">
+                        <a href="${downloadUrl}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 p-2 bg-slate-300/50 dark:bg-slate-500/50 rounded-md hover:bg-slate-300 dark:hover:bg-slate-500">
                             <i class="fas fa-file-alt text-xl"></i>
                             <div>
                                 <p class="text-sm font-semibold break-all">${messageObject.filename}</p>
