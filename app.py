@@ -351,13 +351,26 @@ def get_cover_thumbnail(pdf_filename):
 
 @app.route('/get_covers', methods=['GET'])
 def get_covers():
-    search_query = request.args.get('q', '').lower()
+    search_query = request.args.get('q', '').lower().strip()
     try:
         covers_dir = CONFIG['COVERS_DIR']
-        if not os.path.exists(covers_dir): return jsonify([])
+        if not os.path.exists(covers_dir):
+            return jsonify([])
+        
         all_covers = [f for f in os.listdir(covers_dir) if f.lower().endswith('.pdf')]
-        if search_query: filtered_covers = [f for f in all_covers if search_query in f.lower()]
-        else: filtered_covers = all_covers
+
+        if search_query:
+            # REVISED: Keyword-based search logic
+            search_keywords = search_query.split()
+            filtered_covers = []
+            for cover_name in all_covers:
+                cover_name_lower = cover_name.lower()
+                # Check if all keywords are present in the filename
+                if all(keyword in cover_name_lower for keyword in search_keywords):
+                    filtered_covers.append(cover_name)
+        else:
+            filtered_covers = all_covers
+            
         return jsonify(sorted(filtered_covers))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
