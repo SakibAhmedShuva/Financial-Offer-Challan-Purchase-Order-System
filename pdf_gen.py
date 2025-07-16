@@ -365,7 +365,6 @@ def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_group
     discount_local = float(financials.get('discount_local_bdt', 0)) if financials.get('use_discount_local') else 0
     discount_install = float(financials.get('discount_installation_bdt', 0)) if financials.get('use_discount_installation') else 0
 
-    # Correctly calculate grand totals, ensuring additional BDT charges are always applied
     grand_total_foreign = subtotal_values.get('foreign', 0) + freight - discount_foreign
     grand_total_local = subtotal_values.get('local', 0) - discount_local
     grand_total_install = subtotal_values.get('install', 0) - discount_install
@@ -373,7 +372,7 @@ def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_group
     visible_group_ids = [g['id'] for g in visible_price_groups]
     if 'local' in visible_group_ids:
         grand_total_local += delivery + vat + ait
-    elif 'install' in visible_group_ids: # If no local supply, add to installation
+    elif 'install' in visible_group_ids:
         grand_total_install += delivery + vat + ait
 
     grand_total_values = {
@@ -389,10 +388,19 @@ def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_group
     else:
         add_summary_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotal_values, is_bold=True)
         
-        if freight > 0: add_summary_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
-        if delivery > 0: add_summary_row(financial_labels.get('delivery', 'Delivery:'), {'local': delivery})
-        if vat > 0: add_summary_row(financial_labels.get('vat', 'VAT:'), {'local': vat})
-        if ait > 0: add_summary_row(financial_labels.get('ait', 'AIT:'), {'local': ait})
+        # REVISED: Conditionally add rows based on column visibility
+        is_foreign_visible_boq = any(g['id'] == 'foreign' for g in visible_price_groups)
+        is_local_visible_boq = any(g['id'] == 'local' for g in visible_price_groups)
+
+        if freight > 0 and is_foreign_visible_boq:
+            add_summary_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
+        
+        if delivery > 0 and is_local_visible_boq:
+            add_summary_row(financial_labels.get('delivery', 'Delivery:'), {'local': delivery})
+        if vat > 0 and is_local_visible_boq:
+            add_summary_row(financial_labels.get('vat', 'VAT:'), {'local': vat})
+        if ait > 0 and is_local_visible_boq:
+            add_summary_row(financial_labels.get('ait', 'AIT:'), {'local': ait})
             
         if any(d > 0 for d in [discount_foreign, discount_local, discount_install]):
             discount_values = {k: v for k, v in {
@@ -440,6 +448,16 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     is_local_visible, is_install_visible = visible_columns.get('local_supply_price'), visible_columns.get('installation_price')
     
     is_local_only = not is_foreign_visible and (is_local_visible or is_install_visible)
+    is_local_part_visible = is_local_visible or is_install_visible
+
+    # REVISED: Ensure financial labels are correct based on visibility context
+    has_freight_and_is_visible = freight > 0 and is_foreign_visible
+    if has_freight_and_is_visible:
+        financial_labels['subtotalForeign'] = 'Subtotal, Ex-Works:'
+        financial_labels['grandtotalForeign'] = 'Grand Total, CFR, Chattogram (USD):'
+    else:
+        financial_labels['subtotalForeign'] = 'Subtotal:'
+        financial_labels['grandtotalForeign'] = 'Grand Total, Ex-Works (USD):'
 
     sections = {
         'base': [
@@ -458,8 +476,8 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
                 {'key': 'po_total_usd', 'header': 'TOTAL\n(USD)', 'width': 20 * 0.8 * 1.05, 'align': 'R'}
             ]},
             {'id': 'local', 'visible': is_local_visible, 'header': financial_labels.get('localPrice', 'LOCAL SUPPLY PRICE'), 'width': 40 * 0.8 * 1.05, 'sub': [
-                {'key': 'local_supply_price_bdt', 'header': 'PRICE\n(BDT)', 'width': 20 * 0.8 * 1.05, 'align': 'R'},
-                {'key': 'local_supply_total_bdt', 'header': 'TOTAL\n(BDT)', 'width': 20 * 0.8 * 1.05, 'align': 'R'}
+                {'key': 'local_supply_price_bdt', 'header': 'PRICE\n(BDT)', 'width': 40 * 0.8 * 1.05, 'align': 'R'},
+                {'key': 'local_supply_total_bdt', 'header': 'TOTAL\n(BDT)', 'width': 40 * 0.8 * 1.05, 'align': 'R'}
             ]},
             {'id': 'install', 'visible': is_install_visible, 'header': financial_labels.get('installationPrice', 'INSTALLATION PRICE'), 'width': 40 * 0.8 * 1.05, 'sub': [
                 {'key': 'installation_price_bdt', 'header': 'PRICE\n(BDT)', 'width': 20 * 0.8 * 1.05, 'align': 'R'},
@@ -476,7 +494,6 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     
     if is_summary_enabled:
         client_info = data.get('client', {})
-        # financials = data.get('financials', {}) # already defined
         summary_scopes = data.get('summaryScopes', {})
         full_reference_number = data.get('referenceNumber', "NoRef")
 
@@ -554,9 +571,6 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
             pdf.cell(65, summary_row_height, sanitize_text(scope['description']), 1, 0, 'L')
             pdf.cell(55, summary_row_height, f"${scope['total_usd']:,.2f}", 1, 0, 'R')
             pdf.cell(55, summary_row_height, f"BDT {scope['total_bdt']:,.2f}", 1, 1, 'R')
-
-        # Use recalculated grand totals
-        # sea_freight, delivery_charge, etc are already defined from the recalculation block
         
         def add_summary_row(label, val_usd, val_bdt, is_bold=False, is_red=False, is_grand=False):
             row_h = 8 * 0.8
@@ -589,14 +603,16 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
 
         if has_additional_charges:
             add_summary_row(financial_labels.get('subtotalForeign', 'Sub-Total:'), sub_total_usd, sub_total_bdt, is_bold=True)
-            if freight > 0:
+            # REVISED: Conditionally add rows
+            if freight > 0 and is_foreign_visible:
                 add_summary_row(financial_labels.get('freight', 'Sea Freight:'), freight, None)
-            if delivery > 0:
-                add_summary_row(financial_labels.get('delivery', 'Delivery Charge:'), None, delivery)
-            if vat > 0:
-                add_summary_row(financial_labels.get('vat', 'VAT:'), None, vat)
-            if ait > 0:
-                add_summary_row(financial_labels.get('ait', 'AIT:'), None, ait)
+            if is_local_part_visible:
+                if delivery > 0:
+                    add_summary_row(financial_labels.get('delivery', 'Delivery Charge:'), None, delivery)
+                if vat > 0:
+                    add_summary_row(financial_labels.get('vat', 'VAT:'), None, vat)
+                if ait > 0:
+                    add_summary_row(financial_labels.get('ait', 'AIT:'), None, ait)
             if discount_foreign > 0 or (discount_local + discount_install) > 0:
                 add_summary_row("Special Discount:", -discount_foreign, -(discount_local + discount_install), is_bold=True, is_red=True)
         
