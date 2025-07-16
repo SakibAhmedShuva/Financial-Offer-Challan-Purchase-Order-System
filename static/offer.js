@@ -24,6 +24,8 @@ function initializeOfferModule(deps) {
         localPrice: 'Local Supply Price',
         subtotalLocal: 'Subtotal:',
         delivery: 'Delivery:',
+        vat: 'VAT (7.5%):',
+        ait: 'AIT (5%):',
         discountLocal: 'Discount:',
         grandtotalLocal: 'Grand Total (BDT):',
         installationPrice: 'Installation Price',
@@ -38,13 +40,21 @@ function initializeOfferModule(deps) {
         freight_foreign_usd: 0, 
         discount_foreign_usd: 0,
         delivery_local_bdt: 0, 
+        vat_local_bdt: 0,
+        ait_local_bdt: 0,
         discount_local_bdt: 0,
         discount_installation_bdt: 0,
         use_freight: false,
         use_delivery: false,
+        use_vat: false,
+        use_ait: false,
         use_discount_foreign: false,
         use_discount_local: false,
-        use_discount_installation: false
+        use_discount_installation: false,
+        vat_is_percentage: true,
+        ait_is_percentage: true,
+        vat_percentage: 7.5,
+        ait_percentage: 5
     };
     let visibleColumns = { 
         foreign_price: true,
@@ -355,12 +365,14 @@ function initializeOfferModule(deps) {
         const freight_usd = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
         const discount_foreign_usd = financials.use_discount_foreign ? parseFloat(financials.discount_foreign_usd || 0) : 0;
         const delivery_bdt = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
+        const vat_bdt = financials.use_vat ? parseFloat(financials.vat_local_bdt || 0) : 0;
+        const ait_bdt = financials.use_ait ? parseFloat(financials.ait_local_bdt || 0) : 0;
         const discount_local_bdt = financials.use_discount_local ? parseFloat(financials.discount_local_bdt || 0) : 0;
         const discount_install_bdt = financials.use_discount_installation ? parseFloat(financials.discount_installation_bdt || 0) : 0;
 
         const discount_bdt_total = discount_local_bdt + discount_install_bdt;
         const grand_total_usd = sub_total_usd + freight_usd - discount_foreign_usd;
-        const grand_total_bdt = sub_total_bdt + delivery_bdt - discount_bdt_total;
+        const grand_total_bdt = sub_total_bdt + delivery_bdt + vat_bdt + ait_bdt - discount_bdt_total;
 
         financialSummaryContainer.innerHTML = `
             <table class="w-full text-sm">
@@ -388,6 +400,16 @@ function initializeOfferModule(deps) {
                         <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">Delivery Charge:</td>
                         <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
                         <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${delivery_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">VAT:</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${vat_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">AIT:</td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${ait_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
                     </tr>
                     <tr>
                         <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">Special Discount:</td>
@@ -496,7 +518,7 @@ function initializeOfferModule(deps) {
             case 'source_foreign':
                 indexedItems.sort((a, b) => {
                     const aIsForeign = a.item.source_type === 'foreign';
-                    const bIsForeign = b.item.source_type === 'foreign';
+                    const bIsForeign = b.item.source_type === 'local';
                     if (aIsForeign && !bIsForeign) return -1;
                     if (!aIsForeign && bIsForeign) return 1;
                     return a.originalIndex - b.originalIndex; 
@@ -794,12 +816,29 @@ function initializeOfferModule(deps) {
 
         const freight = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
         const delivery = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
+        
+        // VAT Calculation
+        if (financials.use_vat && financials.vat_is_percentage) {
+            financials.vat_local_bdt = (subtotal_local * (financials.vat_percentage / 100)).toFixed(2);
+            const vatInput = document.querySelector('[data-type="vat_local_bdt"]');
+            if (vatInput) vatInput.value = financials.vat_local_bdt;
+        }
+        const vat = financials.use_vat ? parseFloat(financials.vat_local_bdt || 0) : 0;
+
+        // AIT Calculation
+        if (financials.use_ait && financials.ait_is_percentage) {
+            financials.ait_local_bdt = (subtotal_local * (financials.ait_percentage / 100)).toFixed(2);
+            const aitInput = document.querySelector('[data-type="ait_local_bdt"]');
+            if (aitInput) aitInput.value = financials.ait_local_bdt;
+        }
+        const ait = financials.use_ait ? parseFloat(financials.ait_local_bdt || 0) : 0;
+        
         const discount_foreign = financials.use_discount_foreign ? parseFloat(financials.discount_foreign_usd || 0) : 0;
         const discount_local = financials.use_discount_local ? parseFloat(financials.discount_local_bdt || 0) : 0;
         const discount_installation = financials.use_discount_installation ? parseFloat(financials.discount_installation_bdt || 0) : 0;
 
         const grandtotal_foreign = subtotal_foreign + freight - discount_foreign;
-        const grandtotal_local = subtotal_local + delivery - discount_local;
+        const grandtotal_local = subtotal_local + delivery + vat + ait - discount_local;
         const grandtotal_installation = subtotal_installation - discount_installation;
         
         document.getElementById('subtotal-foreign').textContent = subtotal_foreign.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -823,11 +862,24 @@ function initializeOfferModule(deps) {
         currentSortOrder = 'custom';
 
         financials = { 
-            freight_foreign_usd: 0, discount_foreign_usd: 0,
-            delivery_local_bdt: 0, discount_local_bdt: 0,
+            freight_foreign_usd: 0, 
+            discount_foreign_usd: 0,
+            delivery_local_bdt: 0, 
+            vat_local_bdt: 0,
+            ait_local_bdt: 0,
+            discount_local_bdt: 0,
             discount_installation_bdt: 0,
-            use_freight: false, use_delivery: false,
-            use_discount_foreign: false, use_discount_local: false, use_discount_installation: false
+            use_freight: false,
+            use_delivery: false,
+            use_vat: false,
+            use_ait: false,
+            use_discount_foreign: false,
+            use_discount_local: false,
+            use_discount_installation: false,
+            vat_is_percentage: true,
+            ait_is_percentage: true,
+            vat_percentage: 7.5,
+            ait_percentage: 5
         };
         setupFinancialsUI();
         updateFinancialSummary();
@@ -1371,6 +1423,12 @@ function initializeOfferModule(deps) {
         if (target.classList.contains('financial-input')) {
             const type = target.dataset.type;
             financials[type] = target.value;
+            if (type === 'vat_local_bdt') {
+                financials.vat_is_percentage = false;
+            }
+            if (type === 'ait_local_bdt') {
+                financials.ait_is_percentage = false;
+            }
             updateFinancialSummary();
             captureState();
         }
@@ -1385,6 +1443,8 @@ function initializeOfferModule(deps) {
         const allToggles = [
             { useKey: 'use_freight', type: 'freight' },
             { useKey: 'use_delivery', type: 'delivery' },
+            { useKey: 'use_vat', type: 'vat' },
+            { useKey: 'use_ait', type: 'ait' },
             { useKey: 'use_discount_foreign', type: 'discount_foreign' },
             { useKey: 'use_discount_local', type: 'discount_local' },
             { useKey: 'use_discount_installation', type: 'discount_installation' }
@@ -1415,6 +1475,8 @@ function initializeOfferModule(deps) {
 
         if(button.classList.contains('add-charge-btn')) {
             financials[`use_${type}`] = true;
+            if (type === 'vat') financials.vat_is_percentage = true;
+            if (type === 'ait') financials.ait_is_percentage = true;
             stateChanged = true;
         } else if(button.classList.contains('remove-charge-btn')) {
             financials[`use_${type}`] = false;
@@ -1576,7 +1638,7 @@ function initializeOfferModule(deps) {
         if (field) {
             if (field === 'description') {
                 handleDescriptionInput(e);
-                item[field] = target.innerText;
+                item[field] = target.innerHTML;
             } else {
                 item[field] = target.matches('[contenteditable]') ? target.innerHTML : target.value;
             }
@@ -1747,13 +1809,21 @@ function initializeOfferModule(deps) {
             freight_foreign_usd: 0, 
             discount_foreign_usd: 0,
             delivery_local_bdt: 0, 
+            vat_local_bdt: 0,
+            ait_local_bdt: 0,
             discount_local_bdt: 0,
             discount_installation_bdt: 0,
             use_freight: false,
             use_delivery: false,
+            use_vat: false,
+            use_ait: false,
             use_discount_foreign: false,
             use_discount_local: false,
-            use_discount_installation: false
+            use_discount_installation: false,
+            vat_is_percentage: true,
+            ait_is_percentage: true,
+            vat_percentage: 7.5,
+            ait_percentage: 5
         };
         financials = { ...defaultFinancials, ...(projectData.financials || {}) };
 
@@ -1813,6 +1883,38 @@ function initializeOfferModule(deps) {
         historyIndex = -1;
         setDirty(false);
         setTimeout(() => captureState(), 50); 
+    };
+    
+    window.performReplaceInOffer = (findText, replaceText, isCaseSensitive, isBold) => {
+        if (!offerItems || offerItems.length === 0) {
+            showToast('No items to perform replacement on.', true);
+            return;
+        }
+
+        let replacement = isBold ? `<b>${replaceText}</b>` : replaceText;
+        const escapedFindText = findText.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regexFlags = isCaseSensitive ? 'g' : 'gi';
+        const regex = new RegExp(escapedFindText, regexFlags);
+        
+        let replacementsMade = 0;
+        offerItems.forEach(item => {
+            if (item.description) {
+                const originalDescription = item.description;
+                const newDescription = item.description.replace(regex, replacement);
+                if(originalDescription !== newDescription) {
+                    item.description = newDescription;
+                    replacementsMade++;
+                }
+            }
+        });
+
+        if (replacementsMade > 0) {
+            renderOfferTable();
+            captureState();
+            showToast(`Made replacements in ${replacementsMade} item(s).`);
+        } else {
+            showToast('No matches found to replace.', false);
+        }
     };
 
     setupColumnsDropdown();
