@@ -1770,7 +1770,7 @@ function initializeOfferModule(deps) {
         selectedCover = projectData.selected_cover || null;
         isSummaryPageEnabled = projectData.isSummaryPageEnabled === undefined ? true : projectData.isSummaryPageEnabled;
         summaryScopeDescriptions = projectData.summaryScopeDescriptions || {};
-        includeSignature = projectData.includeSignature === undefined ? true : projectData.includeSignature;
+        includeSignature = projectData.includeSignature === undefined ? true : project.includeSignature;
         
         if (includeSignatureCheckbox) {
             includeSignatureCheckbox.checked = includeSignature;
