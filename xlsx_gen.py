@@ -238,10 +238,13 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
 
     if has_additional_charges:
         add_financial_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotals, is_bold=True)
-        if freight > 0: add_financial_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
-        if delivery > 0: add_financial_row(financial_labels.get('delivery', 'Delivery:'), {'local_supply_price': delivery})
-        if vat > 0: add_financial_row(financial_labels.get('vat', 'VAT:'), {'local_supply_price': vat})
-        if ait > 0: add_financial_row(financial_labels.get('ait', 'AIT:'), {'local_supply_price': ait})
+        # REVISED: Conditionally add rows based on column visibility
+        if freight > 0 and 'foreign' in visible_section_keys:
+            add_financial_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
+        if 'local_supply_price' in visible_section_keys:
+            if delivery > 0: add_financial_row(financial_labels.get('delivery', 'Delivery:'), {'local_supply_price': delivery})
+            if vat > 0: add_financial_row(financial_labels.get('vat', 'VAT:'), {'local_supply_price': vat})
+            if ait > 0: add_financial_row(financial_labels.get('ait', 'AIT:'), {'local_supply_price': ait})
         if any(d > 0 for d in [discount_foreign, discount_local, discount_install]):
             discount_values = {
                 'foreign': -discount_foreign if discount_foreign > 0 else None,
@@ -388,6 +391,16 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     is_local_visible = visible_columns.get('local_supply_price')
     is_install_visible = visible_columns.get('installation_price')
     is_local_only = not is_foreign_visible and (is_local_visible or is_install_visible)
+    is_local_part_visible = is_local_visible or is_install_visible
+
+    # REVISED: Add logic to ensure financial labels are correct based on visibility context
+    has_freight_and_is_visible = freight > 0 and is_foreign_visible
+    if has_freight_and_is_visible:
+        financial_labels['subtotalForeign'] = 'Subtotal, Ex-Works:'
+        financial_labels['grandtotalForeign'] = 'Grand Total, CFR, Chattogram (USD):'
+    else:
+        financial_labels['subtotalForeign'] = 'Subtotal:'
+        financial_labels['grandtotalForeign'] = 'Grand Total, Ex-Works (USD):'
 
     if is_summary_enabled:
         ws = wb.active
@@ -465,14 +478,16 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         summary_data = []
         if has_additional_charges:
             summary_data.append((financial_labels.get('subtotalForeign', 'Sub-Total:'), sub_total_usd, sub_total_bdt))
-            if freight > 0:
+            # REVISED: Conditionally add rows
+            if freight > 0 and is_foreign_visible:
                 summary_data.append((financial_labels.get('freight', 'Sea Freight:'), freight, None))
-            if delivery > 0:
-                summary_data.append((financial_labels.get('delivery', 'Delivery Charge:'), None, delivery))
-            if vat > 0:
-                summary_data.append((financial_labels.get('vat', 'VAT:'), None, vat))
-            if ait > 0:
-                summary_data.append((financial_labels.get('ait', 'AIT:'), None, ait))
+            if is_local_part_visible:
+                if delivery > 0:
+                    summary_data.append((financial_labels.get('delivery', 'Delivery Charge:'), None, delivery))
+                if vat > 0:
+                    summary_data.append((financial_labels.get('vat', 'VAT:'), None, vat))
+                if ait > 0:
+                    summary_data.append((financial_labels.get('ait', 'AIT:'), None, ait))
             if discount_foreign > 0 or (discount_local + discount_install) > 0:
                 summary_data.append(("Special Discount:", -discount_foreign, -(discount_local + discount_install)))
         
