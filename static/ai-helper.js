@@ -8,6 +8,7 @@
 const initializeAiHelperModule = (dependencies) => {
     // --- DOM ELEMENTS ---
     const fileInput = document.getElementById('ai-file-input');
+    const fileNameDisplay = document.getElementById('ai-file-name-display'); // Added
     const processBtn = document.getElementById('ai-process-btn');
     const saveBtn = document.getElementById('ai-save-btn');
     const saveAsBtn = document.getElementById('ai-save-as-btn');
@@ -71,6 +72,15 @@ const initializeAiHelperModule = (dependencies) => {
     fileInput.addEventListener('change', () => {
         if (fileInput.files.length > 0) {
             lastSelectedFile = fileInput.files[0];
+            if(fileNameDisplay) {
+                fileNameDisplay.textContent = `Selected: ${lastSelectedFile.name}`;
+                fileNameDisplay.classList.remove('hidden');
+            }
+        } else {
+            lastSelectedFile = null;
+             if(fileNameDisplay) {
+                fileNameDisplay.classList.add('hidden');
+            }
         }
     });
     
@@ -88,6 +98,10 @@ const initializeAiHelperModule = (dependencies) => {
         }
         await switchTab('ai-helper');
         lastSelectedFile = file;
+        if (fileNameDisplay) {
+            fileNameDisplay.textContent = `Selected: ${lastSelectedFile.name}`;
+            fileNameDisplay.classList.remove('hidden');
+        }
         // Use a small timeout to ensure the tab has switched before clicking
         setTimeout(() => processBtn.click(), 100);
     };
@@ -95,6 +109,7 @@ const initializeAiHelperModule = (dependencies) => {
     function resetAiHelperState() {
         fileInput.value = '';
         lastSelectedFile = null;
+        if(fileNameDisplay) fileNameDisplay.classList.add('hidden');
         lastProcessedRows = [];
         currentAiHelperId = null;
         currentReferenceNumber = null;
@@ -104,7 +119,9 @@ const initializeAiHelperModule = (dependencies) => {
         unitPriceColumnIndex = -1;
         resultsContainer.innerHTML = '';
         resultsPlaceholder.style.display = 'block';
-        resultsContainer.appendChild(resultsPlaceholder);
+        if(!resultsContainer.contains(resultsPlaceholder)) {
+            resultsContainer.appendChild(resultsPlaceholder);
+        }
         resultsToolbar.classList.add('hidden');
         saveBtn.disabled = true;
         saveAsBtn.disabled = true;
@@ -118,8 +135,7 @@ const initializeAiHelperModule = (dependencies) => {
     }
 
     async function handleFileProcessing() {
-        const fileToProcess = fileInput.files[0] || lastSelectedFile;
-        if (!fileToProcess) {
+        if (!lastSelectedFile) {
             showToast('Please select a file first.', true);
             return;
         }
@@ -132,7 +148,7 @@ const initializeAiHelperModule = (dependencies) => {
         }
 
         const formData = new FormData();
-        formData.append('sheet', fileToProcess);
+        formData.append('sheet', lastSelectedFile);
         formData.append('use_foreign', useForeign);
         formData.append('use_local', useLocal);
 
