@@ -98,6 +98,9 @@ function initializeOfferModule(deps) {
     const sheetFilterContainer = document.getElementById('offer-sheet-filter-container');
     const searchForeignCheckbox = document.getElementById('search-foreign');
     const searchLocalCheckbox = document.getElementById('search-local');
+    const foreignSummaryBlock = document.getElementById('foreign-summary');
+    const localSummaryBlock = document.getElementById('local-summary');
+    const installationSummaryBlock = document.getElementById('installation-summary');
 
     const cleanupSuggestions = () => {
         const dropdown = document.getElementById('offer-description-suggestions');
@@ -296,21 +299,21 @@ function initializeOfferModule(deps) {
             const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
             const installationValue = parseFloat(item.installation_total_bdt || 0);
 
-            if (foreignValue > 0) {
+            if (foreignValue > 0 && visibleColumns.foreign_price) {
                 const scopeKey = `${type}-foreign`;
                 if (!scopes[scopeKey]) {
                     scopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: `Foreign Supply of ${type} Items` };
                 }
                 scopes[scopeKey].total_usd += foreignValue;
             }
-            if (localSupplyValue > 0) {
+            if (localSupplyValue > 0 && visibleColumns.local_supply_price) {
                 const scopeKey = `${type}-localsupply`;
                 if (!scopes[scopeKey]) {
                     scopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: `Local Supply of ${type} Items` };
                 }
                 scopes[scopeKey].total_bdt += localSupplyValue;
             }
-            if (installationValue > 0) {
+            if (installationValue > 0 && visibleColumns.installation_price) {
                 const scopeKey = `${type}-installation`;
                 if (!scopes[scopeKey]) {
                     scopes[scopeKey] = { total_usd: 0, total_bdt: 0, description: `Installation of ${type} Items` };
@@ -362,19 +365,22 @@ function initializeOfferModule(deps) {
             `;
         }).join('');
         
-        const freight_usd = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
-        const discount_foreign_usd = financials.use_discount_foreign ? parseFloat(financials.discount_foreign_usd || 0) : 0;
-        const delivery_bdt = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
-        const vat_bdt = financials.use_vat ? parseFloat(financials.vat_local_bdt || 0) : 0;
-        const ait_bdt = financials.use_ait ? parseFloat(financials.ait_local_bdt || 0) : 0;
-        const discount_local_bdt = financials.use_discount_local ? parseFloat(financials.discount_local_bdt || 0) : 0;
-        const discount_install_bdt = financials.use_discount_installation ? parseFloat(financials.discount_installation_bdt || 0) : 0;
+        const freight_usd = financials.use_freight && visibleColumns.foreign_price ? parseFloat(financials.freight_foreign_usd || 0) : 0;
+        const discount_foreign_usd = financials.use_discount_foreign && visibleColumns.foreign_price ? parseFloat(financials.discount_foreign_usd || 0) : 0;
+        
+        const isLocalSectionVisible = visibleColumns.local_supply_price || visibleColumns.installation_price;
+        const delivery_bdt = financials.use_delivery && isLocalSectionVisible ? parseFloat(financials.delivery_local_bdt || 0) : 0;
+        const vat_bdt = financials.use_vat && isLocalSectionVisible ? parseFloat(financials.vat_local_bdt || 0) : 0;
+        const ait_bdt = financials.use_ait && isLocalSectionVisible ? parseFloat(financials.ait_local_bdt || 0) : 0;
+
+        const discount_local_bdt = financials.use_discount_local && visibleColumns.local_supply_price ? parseFloat(financials.discount_local_bdt || 0) : 0;
+        const discount_install_bdt = financials.use_discount_installation && visibleColumns.installation_price ? parseFloat(financials.discount_installation_bdt || 0) : 0;
 
         const discount_bdt_total = discount_local_bdt + discount_install_bdt;
         const grand_total_usd = sub_total_usd + freight_usd - discount_foreign_usd;
         const grand_total_bdt = sub_total_bdt + delivery_bdt + vat_bdt + ait_bdt - discount_bdt_total;
 
-        financialSummaryContainer.innerHTML = `
+        let summaryHtml = `
             <table class="w-full text-sm">
                 <thead class="bg-slate-100 dark:bg-slate-700">
                     <tr>
@@ -390,32 +396,45 @@ function initializeOfferModule(deps) {
                         <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold">Sub-Total:</td>
                         <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold">${sub_total_usd.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                         <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold">${sub_total_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
-                    </tr>
-                    <tr>
-                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">Sea Freight:</td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${freight_usd.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
-                    </tr>
-                    <tr>
-                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">Delivery Charge:</td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${delivery_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
-                    </tr>
-                    <tr>
-                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">VAT:</td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${vat_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
-                    </tr>
-                    <tr>
-                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">AIT:</td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${ait_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
-                    </tr>
-                    <tr>
-                        <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">Special Discount:</td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">(${discount_foreign_usd.toLocaleString('en-US', {minimumFractionDigits: 2})})</td>
-                        <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">(${discount_bdt_total.toLocaleString('en-BD', {minimumFractionDigits: 2})})</td>
-                    </tr>
+                    </tr>`;
+
+        if (freight_usd > 0) {
+            summaryHtml += `<tr>
+                <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">Sea Freight:</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${freight_usd.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+            </tr>`;
+        }
+        if (delivery_bdt > 0) {
+            summaryHtml += `<tr>
+                <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">Delivery Charge:</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${delivery_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+            </tr>`;
+        }
+        if (vat_bdt > 0) {
+            summaryHtml += `<tr>
+                <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">VAT:</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${vat_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+            </tr>`;
+        }
+        if (ait_bdt > 0) {
+            summaryHtml += `<tr>
+                <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">AIT:</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right"></td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right">${ait_bdt.toLocaleString('en-BD', {minimumFractionDigits: 2})}</td>
+            </tr>`;
+        }
+        if (discount_foreign_usd > 0 || discount_bdt_total > 0) {
+            summaryHtml += `<tr>
+                <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">Special Discount:</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">(${discount_foreign_usd.toLocaleString('en-US', {minimumFractionDigits: 2})})</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">(${discount_bdt_total.toLocaleString('en-BD', {minimumFractionDigits: 2})})</td>
+            </tr>`;
+        }
+        
+        summaryHtml += `
                      <tr class="bg-slate-100 dark:bg-slate-700">
                         <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-extrabold">Grand Total:</td>
                         <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-extrabold">${grand_total_usd.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
@@ -430,9 +449,9 @@ function initializeOfferModule(deps) {
                         <td colspan="2" id="summary-words-bdt" class="border p-2 font-semibold border-slate-300 dark:border-slate-600">Loading...</td>
                     </tr>
                 </tbody>
-            </table>
-        `;
+            </table>`;
 
+        financialSummaryContainer.innerHTML = summaryHtml;
         updateInWordsSummary(grand_total_usd, grand_total_bdt);
     };
 
@@ -799,6 +818,11 @@ function initializeOfferModule(deps) {
     };
 
     const updateFinancialSummary = () => {
+        // Toggle visibility of summary blocks
+        foreignSummaryBlock.style.display = visibleColumns.foreign_price ? 'block' : 'none';
+        localSummaryBlock.style.display = visibleColumns.local_supply_price ? 'block' : 'none';
+        installationSummaryBlock.style.display = visibleColumns.installation_price ? 'block' : 'none';
+
         const hasFreight = financials.use_freight && parseFloat(financials.freight_foreign_usd || 0) > 0;
 
         if (hasFreight) {
