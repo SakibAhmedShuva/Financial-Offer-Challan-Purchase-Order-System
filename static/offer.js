@@ -818,12 +818,13 @@ function initializeOfferModule(deps) {
     };
 
     const updateFinancialSummary = () => {
-        // Toggle visibility of summary blocks
+        // REVISED: Toggle visibility of summary blocks based on visible columns
         foreignSummaryBlock.style.display = visibleColumns.foreign_price ? 'block' : 'none';
         localSummaryBlock.style.display = visibleColumns.local_supply_price ? 'block' : 'none';
         installationSummaryBlock.style.display = visibleColumns.installation_price ? 'block' : 'none';
 
-        const hasFreight = financials.use_freight && parseFloat(financials.freight_foreign_usd || 0) > 0;
+        // REVISED: Condition for freight now also depends on the foreign price column being visible.
+        const hasFreight = financials.use_freight && parseFloat(financials.freight_foreign_usd || 0) > 0 && visibleColumns.foreign_price;
 
         if (hasFreight) {
             financialLabels.subtotalForeign = 'Subtotal, Ex-Works:';
