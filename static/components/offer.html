@@ -16,6 +16,16 @@
         </div>
     </div>
 
+    <div id="admin-offer-tools" class="hidden bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 p-4 rounded-xl shadow-md mb-6">
+        <h3 class="font-semibold text-lg mb-4 text-red-800 dark:text-red-200 flex items-center"><i class="fas fa-user-shield mr-3"></i>Admin Tools</h3>
+        <div class="flex items-center gap-4">
+            <button id="admin-autofill-prices-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 transition-all duration-200 shadow-sm">
+                <i class="fas fa-magic"></i> Auto-fill Missing Prices
+            </button>
+            <p class="text-sm text-red-700 dark:text-red-300">This will attempt to calculate and fill in missing prices (especially installation) in the master price lists.</p>
+        </div>
+    </div>
+
     <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-x-8">
             <div class="lg:col-span-1">
@@ -129,7 +139,6 @@
                             </span>
                             <input type="number" data-type="delivery_local_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
                         </div>
-                        <!-- VAT Row -->
                         <div class="flex justify-between items-center">
                             <span>
                                 <span id="vat-label" contenteditable="true" data-label-key="vat">VAT (7.5%):</span>
@@ -138,7 +147,6 @@
                             </span>
                             <input type="number" data-type="vat_local_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
                         </div>
-                        <!-- AIT Row -->
                         <div class="flex justify-between items-center">
                             <span>
                                 <span id="ait-label" contenteditable="true" data-label-key="ait">AIT (5%):</span>
