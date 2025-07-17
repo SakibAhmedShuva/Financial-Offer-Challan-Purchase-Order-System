@@ -26,6 +26,9 @@ import data_management
 import cover_merger 
 from app_helpers import html_to_plain_text, to_words_usd, to_words_bdt
 
+# NEW: Import BeautifulSoup for HTML cleaning
+from bs4 import BeautifulSoup
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -45,7 +48,7 @@ CONFIG = {
     'ASSETS_DIR': 'assets',
     'COVERS_DIR': os.path.join('assets', 'covers'),
     'THUMBNAILS_DIR': os.path.join('assets', 'covers', 'thumbnails'),
-    'CHAT_ATTACHMENTS_DIR': os.path.join('data_storage', 'chat_attachments'), # ADDED: For chat files
+    'CHAT_ATTACHMENTS_DIR': os.path.join('data_storage', 'chat_attachments'),
     'USERS_FILE': 'users.csv',
     'CLIENTS_FILE': 'clients.csv',
     'ACTIVITY_LOG_FILE': 'activity_log.csv',
@@ -53,7 +56,7 @@ CONFIG = {
     'NOTIFICATIONS_FILE': 'notifications.csv',
     'PROJECT_SHARES_FILE': 'project_shares.csv',
     'TASKS_FILE': 'tasks.csv',
-    'CHAT_HISTORY_FILE': 'chat_history.csv', # Added for chat persistence
+    'CHAT_HISTORY_FILE': 'chat_history.csv',
     'PRICE_LIST_FILE': 'Price List 2017-Rev-Edited -All Item 2018.xlsx',
     'LOCAL_PRICE_LIST_FILE': 'local_items.xlsx',
     'CHALLAN_LOG_FILE': 'challan.xlsx',
@@ -75,9 +78,50 @@ item_faiss_index, item_searchable_data = None, None
 local_item_faiss_index, local_item_searchable_data = None, None
 client_faiss_index, client_searchable_data = None, None
 users_df, clients_df = None, None
-online_users = {} # maps email to session ID for chat
+online_users = {}
 
 # --- Helper Functions ---
+def sanitize_dirty_html(html_string):
+    """
+    Cleans up HTML pasted from sources like MS Word, keeping basic formatting.
+    """
+    if not isinstance(html_string, str) or not html_string.strip():
+        return ''
+
+    soup = BeautifulSoup(html_string, 'html.parser')
+    
+    # Whitelist of tags to keep
+    allowed_tags = {'b', 'strong', 'i', 'em', 'u', 'br'}
+
+    # Remove all tags that are not in the whitelist
+    for tag in soup.find_all(True):
+        if tag.name not in allowed_tags:
+            tag.unwrap()  # Removes the tag but keeps its content
+        else:
+            tag.attrs = {}  # Strip all attributes like style, class, etc.
+
+    # Convert aliases
+    for strong_tag in soup.find_all('strong'):
+        strong_tag.name = 'b'
+    for em_tag in soup.find_all('em'):
+        em_tag.name = 'i'
+        
+    # Convert <p> tags to <br> tags for line breaks
+    for p_tag in soup.find_all('p'):
+        p_tag.insert_after(soup.new_tag('br'))
+        p_tag.unwrap()
+    
+    # Get the cleaned HTML as a string
+    cleaned_html = str(soup)
+    
+    # Final regex clean-up for extra spaces and line breaks
+    cleaned_html = cleaned_html.replace('&nbsp;', ' ')
+    cleaned_html = re.sub(r'\s+', ' ', cleaned_html).strip()
+    cleaned_html = re.sub(r'(<br\s*/?>\s*)+', '<br/>', cleaned_html)
+    cleaned_html = re.sub(r'^(<br\s*/?>)+|(<br\s*/?>)+$', '', cleaned_html) # Trim leading/trailing breaks
+    
+    return cleaned_html
+
 def setup_directories_and_files():
     """Sets up the necessary directories and basic CSV files if they don't exist."""
     os.makedirs(CONFIG['DATA_DIR'], exist_ok=True)
@@ -87,7 +131,7 @@ def setup_directories_and_files():
     os.makedirs(CONFIG['ASSETS_DIR'], exist_ok=True)
     os.makedirs(CONFIG['COVERS_DIR'], exist_ok=True)
     os.makedirs(CONFIG['THUMBNAILS_DIR'], exist_ok=True)
-    os.makedirs(CONFIG['CHAT_ATTACHMENTS_DIR'], exist_ok=True) # ADDED
+    os.makedirs(CONFIG['CHAT_ATTACHMENTS_DIR'], exist_ok=True)
     
     global users_df, clients_df
     users_filepath = os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE'])
@@ -191,6 +235,8 @@ def check_project_permission(project_id, user_email, user_role):
 
 def safe_float(value, default=0.0):
     try:
+        if value is None or value == '':
+            return default
         return float(value)
     except (ValueError, TypeError):
         return default
@@ -576,22 +622,26 @@ def search_items():
     if selected_types:
         sorted_results = [item for item in sorted_results if item.get('product_type') in selected_types]
     
-    # --- MODIFICATION START ---
-    # The 'po_price' is no longer removed for non-admins.
-    # The frontend is responsible for hiding this information from the UI based on user role.
-    # This ensures the data is preserved when a normal user saves a project.
     if role != 'admin':
         for item in sorted_results:
-            # We only remove temporary scoring keys now, not data fields.
             item.pop('relevance_score', None)
             item.pop('source_sort_key', None)
-    # --- MODIFICATION END ---
     
     return jsonify(sorted_results)
 
 @app.route('/project', methods=['POST'])
 def save_project():
     data = request.json
+    
+    # --- NEW SANITIZATION STEP ---
+    items_to_save = data.get('items')
+    if items_to_save:
+        for item in items_to_save:
+            if 'description' in item and item['description']:
+                item['description'] = sanitize_dirty_html(item['description'])
+        data['items'] = items_to_save
+    # --- END OF SANITIZATION STEP ---
+
     is_new_project = not data.get('projectId')
     project_id = data.get('projectId') or str(uuid.uuid4())
     filename = f"{project_id}.json"
@@ -998,13 +1048,12 @@ def ai_helper_process_file():
                 "success": True,
                 "headers": [f"Column {i+1}" for i in range(len(df.columns))],
                 "description_column_index": description_col_idx,
-                "quantity_column_index": -1,  # Frontend will default to '1'
-                "unit_column_index": -1,      # Frontend will default to 'Pcs'
+                "quantity_column_index": -1,
+                "unit_column_index": -1,
                 "unit_price_column_index": -1,
                 "processed_rows": processed_rows
             })
         except Exception as fallback_error:
-            # If even the simple fallback fails, return a final error
             print(f"Fallback parsing also failed: {fallback_error}")
             return jsonify({'success': False, 'message': f'The file could not be processed. It might be corrupted or in an unsupported format.'}), 500
 
@@ -1146,7 +1195,6 @@ def mark_notification_read():
         df.loc[df['notification_id'] == notif_id, 'is_read'] = 'yes'
         df.to_csv(notif_filepath, index=False)
         
-        # Return the updated list of notifications for the user
         user_notifications = df[df['user_email'] == user_email].copy()
         user_notifications.sort_values(by='timestamp', ascending=False, inplace=True)
         return jsonify({'success': True, 'notifications': user_notifications.to_dict('records')})
@@ -1313,7 +1361,6 @@ def export_challan_endpoint():
     user_name = data.get('user', {}).get('name', 'Unknown')
     project_id = data.get('projectId', 'N/A')
     
-    # Get the pre-generated filename from the frontend payload
     safe_filename = data.get('filename', f"DC_{ref_number}_export.{file_type}")
 
     challan_log_path = os.path.join(CONFIG['DATA_DIR'], CONFIG['CHALLAN_LOG_FILE'])
@@ -1321,7 +1368,6 @@ def export_challan_endpoint():
         df = pd.read_excel(challan_log_path)
         new_sl = (df['SL'].max() + 1) if not df.empty and pd.notna(df['SL'].max()) else 1
         
-        # Description for the log can be derived from categories passed in payload
         description = ', '.join(data.get('categories', []))
         
         new_row_data = {
@@ -1405,7 +1451,6 @@ def upload_chat_attachment():
         print(f"Error uploading chat file: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# MODIFIED: Endpoint now sets the correct download name
 @app.route('/chat_attachment/<path:filename>')
 def get_chat_attachment(filename):
     try:
@@ -1458,7 +1503,7 @@ def handle_disconnect():
 @socketio.on('private_message')
 def handle_private_message(data):
     recipient_email = data.get('recipient_email')
-    message_obj = data.get('message') # This is now an object
+    message_obj = data.get('message') 
     
     sender_email = None
     for email, sid in online_users.items():
@@ -1470,7 +1515,6 @@ def handle_private_message(data):
         timestamp = datetime.now().isoformat()
         message_id = str(uuid.uuid4())
 
-        # Save message object to history as a JSON string
         try:
             with open(os.path.join(CONFIG['DATA_DIR'], CONFIG['CHAT_HISTORY_FILE']), 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
@@ -1489,7 +1533,6 @@ def handle_private_message(data):
         if recipient_sid:
             emit('new_message', message_payload, to=recipient_sid)
 
-        # Send confirmation back to sender
         emit('new_message', {**message_payload, 'recipient_email': recipient_email}, to=request.sid)
 
 @app.route('/chat_history/<user1_email>/<user2_email>')
@@ -1508,7 +1551,6 @@ def get_chat_history(user1_email, user2_email):
                 try:
                     return json.loads(msg)
                 except (json.JSONDecodeError, TypeError):
-                    # Fallback for old plain-text messages
                     return {'type': 'text', 'content': msg}
 
             conversation['message'] = conversation['message'].apply(parse_message)
