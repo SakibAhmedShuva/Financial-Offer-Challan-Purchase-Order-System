@@ -189,6 +189,12 @@ def check_project_permission(project_id, user_email, user_role):
             
     return False
 
+def safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
 # --- Export Functions ---
 def export_file(file_type, data):
     user_info = data.get('user', {})
@@ -204,27 +210,27 @@ def export_file(file_type, data):
     visible_columns = data.get('visibleColumns', {})
     summary_scopes = data.get('summaryScopes', {})
 
-    has_freight = float(financials.get('freight_foreign_usd', 0)) > 0
-    has_delivery = float(financials.get('delivery_local_bdt', 0)) > 0
-    has_discount = (float(financials.get('discount_foreign_usd', 0)) > 0 or
-                    float(financials.get('discount_local_bdt', 0)) > 0 or
-                    float(financials.get('discount_installation_bdt', 0)) > 0)
+    has_freight = safe_float(financials.get('freight_foreign_usd')) > 0
+    has_delivery = safe_float(financials.get('delivery_local_bdt')) > 0
+    has_discount = (safe_float(financials.get('discount_foreign_usd')) > 0 or
+                    safe_float(financials.get('discount_local_bdt')) > 0 or
+                    safe_float(financials.get('discount_installation_bdt')) > 0)
     data['has_additional_charges'] = has_freight or has_delivery or has_discount
 
-    has_foreign_part = visible_columns.get('foreign_price', True) and any(float(item.get('foreign_total_usd', 0)) > 0 for item in items)
-    has_local_supply_part = visible_columns.get('local_supply_price') and any(float(item.get('local_supply_total_bdt', 0)) > 0 for item in items)
-    has_install_part = visible_columns.get('installation_price') and any(float(item.get('installation_total_bdt', 0)) > 0 for item in items)
+    has_foreign_part = visible_columns.get('foreign_price', True) and any(safe_float(item.get('foreign_total_usd')) > 0 for item in items)
+    has_local_supply_part = visible_columns.get('local_supply_price') and any(safe_float(item.get('local_supply_total_bdt')) > 0 for item in items)
+    has_install_part = visible_columns.get('installation_price') and any(safe_float(item.get('installation_total_bdt')) > 0 for item in items)
     
     data['has_foreign_part'] = has_foreign_part
     data['has_local_part'] = has_local_supply_part or has_install_part
     
-    sub_total_usd = sum(scope.get('total_usd', 0) for scope in summary_scopes.values())
-    sub_total_bdt = sum(scope.get('total_bdt', 0) for scope in summary_scopes.values())
+    sub_total_usd = sum(safe_float(scope.get('total_usd')) for scope in summary_scopes.values())
+    sub_total_bdt = sum(safe_float(scope.get('total_bdt')) for scope in summary_scopes.values())
     
-    discount_bdt_total = float(financials.get('discount_local_bdt', 0)) + float(financials.get('discount_installation_bdt', 0))
+    discount_bdt_total = safe_float(financials.get('discount_local_bdt')) + safe_float(financials.get('discount_installation_bdt'))
 
-    grand_total_usd = sub_total_usd + float(financials.get('freight_foreign_usd', 0)) - float(financials.get('discount_foreign_usd', 0))
-    grand_total_bdt = sub_total_bdt + float(financials.get('delivery_local_bdt', 0)) - discount_bdt_total
+    grand_total_usd = sub_total_usd + safe_float(financials.get('freight_foreign_usd')) - safe_float(financials.get('discount_foreign_usd'))
+    grand_total_bdt = sub_total_bdt + safe_float(financials.get('delivery_local_bdt')) - discount_bdt_total
 
     data['words_usd'] = to_words_usd(grand_total_usd) if data['has_foreign_part'] else ""
     data['words_bdt'] = to_words_bdt(grand_total_bdt) if data['has_local_part'] else ""
