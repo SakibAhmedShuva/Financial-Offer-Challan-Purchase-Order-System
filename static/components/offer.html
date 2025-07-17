@@ -1,0 +1,286 @@
+<div class="space-y-6">
+    <div class="bg-white dark:bg-slate-800 shadow-lg rounded-xl p-6 mb-6">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Financial Offer</h2>
+                <p class="text-slate-500 dark:text-slate-400 mt-1">Create, manage, and export financial offers.</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <button id="new-offer-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fas fa-plus"></i> New</button>
+                <div id="offer-project-name-container">
+                     <div id="offer-project-name" contenteditable="true" class="px-4 py-2 bg-sky-100 dark:bg-sky-900/50 text-sky-800 dark:text-sky-300 rounded-lg font-mono text-sm font-semibold hover:bg-sky-200 dark:hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all">
+                        New Financial Offer
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-x-8">
+            <div class="lg:col-span-1">
+                <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-user-check mr-3 text-sky-500"></i>1. Select Client</h3>
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+                    <input type="text" id="client-search-input" placeholder="Search for a client..." class="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                    <div id="client-search-results" class="search-results-dropdown hidden"></div>
+                </div>
+                <div id="selected-client-info" class="mt-4 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg hidden" title="You can edit the client name and address directly.">
+                    <p class="font-bold text-green-800 dark:text-green-200" id="client-name" contenteditable="true"></p>
+                    <p class="text-sm text-slate-600 dark:text-slate-400" id="client-address" contenteditable="true"></p>
+                </div>
+                <div class="mt-4 flex items-center">
+                    <input id="offer-add-signature" type="checkbox" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500" checked>
+                    <label for="offer-add-signature" class="ml-2 block text-sm text-slate-900 dark:text-slate-300 font-medium">Add Authorization Seal & Signature</label>
+                </div>
+            </div>
+            <div class="lg:col-span-2">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-semibold text-lg text-slate-800 dark:text-white flex items-center"><i class="fas fa-plus-circle mr-3 text-sky-500"></i>2. Add Items</h3>
+                    <div class="flex items-center space-x-4">
+                        <h4 class="font-medium text-sm text-slate-700 dark:text-slate-300">Search In:</h4>
+                        <div class="flex items-center">
+                            <input id="search-foreign" type="checkbox" value="foreign" name="item_source" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500" checked>
+                            <label for="search-foreign" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Foreign</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="search-local" type="checkbox" value="local" name="item_source" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500">
+                            <label for="search-local" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Local</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-4 flex items-center gap-4">
+                    <h4 class="font-medium text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap">Filter:</h4>
+                    <div id="offer-sheet-filter-container" class="flex flex-wrap gap-x-4 gap-y-2">
+                        <p class="text-slate-400 text-xs">Loading sheets...</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+                        <div id="item-search-loader" class="absolute left-3 top-3.5 hidden loader !w-5 !h-5"></div>
+                        <input type="text" id="item-search-input" placeholder="Search for products or items..." class="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <div id="item-search-results" class="search-results-dropdown hidden"></div>
+                    </div>
+                    <div class="flex items-center justify-end gap-2">
+                        <div class="relative">
+                            <button id="sort-toggle-btn" class="px-4 py-2.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-sort"></i> Sort <i class="fas fa-chevron-down ml-2 text-xs"></i></button>
+                            <div id="sort-dropdown" class="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg z-10 hidden p-2 space-y-1">
+                                </div>
+                        </div>
+                        <div class="relative">
+                            <button id="columns-toggle-btn" class="px-4 py-2.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-table-columns"></i> Columns <i class="fas fa-chevron-down ml-2 text-xs"></i></button>
+                            <div id="columns-dropdown" class="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg z-10 hidden p-2 space-y-1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <hr class="my-6 border-slate-200 dark:border-slate-700">
+
+        <div id="description-toolbar">
+            <button id="desc-bold-btn" title="Bold"><i class="fas fa-bold"></i></button>
+            <button id="desc-italic-btn" title="Italic"><i class="fas fa-italic"></i></button>
+            <input type="color" id="desc-color-btn" title="Text Color">
+        </div>
+        <div class="overflow-x-auto border-t border-b border-slate-200 dark:border-slate-700"><table class="w-full text-left"><thead id="offer-table-head"></thead><tbody id="offer-table-body"></tbody></table></div>
+        <div id="offer-table-actions" class="mt-4 hidden"><button id="add-custom-item-btn" class="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600"><i class="fas fa-plus mr-2"></i>Add Custom Item</button></div>
+        <p id="table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the offer.</p>
+        
+        <div id="financials-section" class="mt-6 hidden">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div id="foreign-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
+                    <h4 id="foreign-price-label" contenteditable="true" data-label-key="foreignPrice" class="font-bold text-lg mb-2">Foreign Price</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span id="subtotal-foreign-label" contenteditable="true" data-label-key="subtotalForeign">Subtotal:</span> <span id="subtotal-foreign" class="font-medium"></span></div>
+                        <div class="flex justify-between items-center">
+                            <span> 
+                                <span id="freight-label" contenteditable="true" data-label-key="freight">Freight:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="freight">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="freight">+</button>
+                            </span>
+                            <input type="number" data-type="freight_foreign_usd" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                        </div>
+                        <div class="flex justify-between items-center text-red-500 dark:text-red-400 font-semibold">
+                            <span>
+                                <span id="discount-foreign-label" contenteditable="true" data-label-key="discountForeign">Discount:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="discount_foreign">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="discount_foreign">+</button>
+                            </span>
+                            <input type="number" data-type="discount_foreign_usd" class="financial-input w-24 p-1 text-right rounded bg-red-50 dark:bg-red-900/50 border-red-300 hidden" value="0">
+                        </div>
+                        <hr class="dark:border-slate-600 my-1">
+                        <div class="flex justify-between font-bold text-base"><span id="grandtotal-foreign-label" contenteditable="true" data-label-key="grandtotalForeign">Grand Total (USD):</span> <span id="grandtotal-foreign"></span></div>
+                    </div>
+                </div>
+                <div id="local-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
+                    <h4 id="local-price-label" contenteditable="true" data-label-key="localPrice" class="font-bold text-lg mb-2">Local Supply Price</h4>
+                     <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span id="subtotal-local-label" contenteditable="true" data-label-key="subtotalLocal">Subtotal:</span> <span id="subtotal-local" class="font-medium"></span></div>
+                        <div class="flex justify-between items-center">
+                            <span>
+                                <span id="delivery-label" contenteditable="true" data-label-key="delivery">Delivery:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="delivery">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="delivery">+</button>
+                            </span>
+                            <input type="number" data-type="delivery_local_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                        </div>
+                        <!-- VAT Row -->
+                        <div class="flex justify-between items-center">
+                            <span>
+                                <span id="vat-label" contenteditable="true" data-label-key="vat">VAT (7.5%):</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="vat">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="vat">+</button>
+                            </span>
+                            <input type="number" data-type="vat_local_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                        </div>
+                        <!-- AIT Row -->
+                        <div class="flex justify-between items-center">
+                            <span>
+                                <span id="ait-label" contenteditable="true" data-label-key="ait">AIT (5%):</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="ait">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="ait">+</button>
+                            </span>
+                            <input type="number" data-type="ait_local_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                        </div>
+                        <div class="flex justify-between items-center text-red-500 dark:text-red-400 font-semibold">
+                            <span>
+                                <span id="discount-local-label" contenteditable="true" data-label-key="discountLocal">Discount:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="discount_local">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="discount_local">+</button>
+                            </span>
+                            <input type="number" data-type="discount_local_bdt" class="financial-input w-24 p-1 text-right rounded bg-red-50 dark:bg-red-900/50 border-red-300 hidden" value="0">
+                        </div>
+                        <hr class="dark:border-slate-600 my-1">
+                        <div class="flex justify-between font-bold text-base"><span id="grandtotal-local-label" contenteditable="true" data-label-key="grandtotalLocal">Grand Total (BDT):</span> <span id="grandtotal-local"></span></div>
+                    </div>
+                </div>
+                <div id="installation-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
+                    <h4 id="installation-price-label" contenteditable="true" data-label-key="installationPrice" class="font-bold text-lg mb-2">Installation Price</h4>
+                     <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span id="subtotal-installation-label" contenteditable="true" data-label-key="subtotalInstallation">Subtotal:</span> <span id="subtotal-installation" class="font-medium"></span></div>
+                        <div class="flex justify-between items-center text-red-500 dark:text-red-400 font-semibold">
+                            <span>
+                                 <span id="discount-installation-label" contenteditable="true" data-label-key="discountInstallation">Discount:</span>
+                                 <button class="remove-charge-btn text-red-500 hidden" data-type="discount_installation">&times;</button>
+                                 <button class="add-charge-btn text-green-500" data-type="discount_installation">+</button>
+                            </span>
+                            <input type="number" data-type="discount_installation_bdt" class="financial-input w-24 p-1 text-right rounded bg-red-50 dark:bg-red-900/50 border-red-300 hidden" value="0">
+                        </div>
+                        <hr class="dark:border-slate-600 my-1">
+                        <div class="flex justify-between font-bold text-base"><span id="grandtotal-installation-label" contenteditable="true" data-label-key="grandtotalInstallation">Grand Total (BDT):</span> <span id="grandtotal-installation"></span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
+         <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-file-contract mr-3 text-sky-500"></i>Terms & Conditions</h3>
+        <div class="flex items-center flex-wrap gap-x-6 gap-y-2 mb-4">
+            <h4 class="font-medium text-slate-700 dark:text-slate-300">Select Components:</h4>
+            <div class="flex items-center">
+                <input id="tnc-international" type="checkbox" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500">
+                <label for="tnc-international" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">International</label>
+            </div>
+            <div class="flex items-center">
+                <input id="tnc-local-supply" type="checkbox" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500">
+                <label for="tnc-local-supply" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Local (Supply)</label>
+            </div>
+            <div class="flex items-center">
+                <input id="tnc-local-installation" type="checkbox" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500">
+                <label for="tnc-local-installation" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Local (Installation)</label>
+            </div>
+        </div>
+        <textarea id="tnc-textarea" rows="12" class="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Select a component to load terms..."></textarea>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
+        <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center">
+            <i class="fas fa-file-alt mr-3 text-sky-500"></i>Cover Page
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+                <div class="mb-4">
+                    <label for="cover-search-input" class="font-medium text-slate-700 dark:text-slate-300">Search Covers</label>
+                    <div class="relative mt-2">
+                        <i class="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+                        <input type="text" id="cover-search-input" placeholder="Search by client, project type, etc." class="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <div id="cover-search-results" class="search-results-dropdown hidden"></div>
+                    </div>
+                </div>
+                 <div>
+                    <label class="font-medium text-slate-700 dark:text-slate-300">Suggested Covers</label>
+                    <div id="suggested-covers-container" class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        </div>
+                </div>
+                <div class="mt-6">
+                    <label class="font-medium text-slate-700 dark:text-slate-300">Or Upload Custom Cover</label>
+                    <div id="cover-upload-zone" class="mt-2 flex justify-center rounded-lg border border-dashed border-slate-900/25 dark:border-slate-100/25 px-6 py-10">
+                        <div class="text-center">
+                            <i class="fas fa-file-pdf fa-2x text-slate-300 dark:text-slate-500"></i>
+                            <div class="mt-4 flex text-sm leading-6 text-slate-600 dark:text-slate-400">
+                                <label for="cover-file-input" class="relative cursor-pointer rounded-md bg-white dark:bg-slate-900 font-semibold text-sky-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-sky-600 focus-within:ring-offset-2 dark:ring-offset-slate-900 hover:text-sky-500">
+                                    <span>Upload a file</span>
+                                    <input id="cover-file-input" name="cover-file-input" type="file" class="sr-only" accept="application/pdf">
+                                </label>
+                                <p class="pl-1">or drag and drop</p>
+                            </div>
+                            <p class="text-xs leading-5 text-slate-600 dark:text-slate-400">PDF up to 10MB</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <label class="font-medium text-slate-700 dark:text-slate-300">Selected Cover Preview</label>
+                <div id="cover-preview-container" class="mt-2 w-full h-96 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-100 dark:bg-slate-700/50 hidden">
+                    </div>
+                <div id="selected-cover-info" class="mt-2 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg hidden">
+                    <div class="flex justify-between items-center">
+                        <p class="font-bold text-green-800 dark:text-green-200 truncate" id="selected-cover-name" title="Selected cover file name"></p>
+                        <button id="remove-cover-btn" class="ml-4 text-red-500 hover:text-red-700 text-sm flex-shrink-0">Remove</button>
+                    </div>
+                </div>
+                <p id="no-cover-selected" class="mt-2 p-3 text-slate-500 text-center border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg h-96 flex items-center justify-center">No cover page selected.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
+        <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center">
+            <i class="fas fa-file-invoice-dollar mr-3 text-sky-500"></i>Financial Summary Page
+        </h3>
+        <div class="flex items-center mb-4 p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
+            <input id="enable-summary-page-checkbox" type="checkbox" class="h-5 w-5 text-sky-600 border-slate-300 rounded focus:ring-sky-500" checked>
+            <label for="enable-summary-page-checkbox" class="ml-3 text-slate-800 dark:text-slate-200 font-medium">Enable dedicated summary page (moves BOQ to a separate page/sheet)</label>
+        </div>
+        <div id="financial-summary-container" class="space-y-4">
+            <p class="text-center text-slate-500 dark:text-slate-400 py-8">Add items to the offer to see the financial summary.</p>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md">
+         <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-check-circle mr-3 text-sky-500"></i>4. Finalize and Export</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <h4 class="font-medium mb-3 text-slate-700 dark:text-slate-300">Categories for Export</h4>
+                <div id="offer-category-checkboxes" class="flex flex-wrap gap-x-6 gap-y-3">
+                    <div class="flex items-center"><input id="cat-FDS" type="checkbox" value="FDS" name="category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="cat-FDS" class="ml-2 block text-sm">FDS</label></div>
+                    <div class="flex items-center"><input id="cat-FPS" type="checkbox" value="FPS" name="category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="cat-FPS" class="ml-2 block text-sm">FPS</label></div>
+                    <div class="flex items-center"><input id="cat-FD" type="checkbox" value="FD" name="category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="cat-FD" class="ml-2 block text-sm">FD</label></div>
+                    <div class="flex items-center"><input id="cat-FC" type="checkbox" value="FC" name="category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="cat-FC" class="ml-2 block text-sm">FC</label></div>
+                </div>
+            </div>
+            <div class="flex items-end justify-end space-x-3">
+                <button id="save-project-btn" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-save"></i> Save</button>
+                <button id="save-as-btn" class="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-copy"></i> Save As</button>
+                <button id="export-pdf-btn" class="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                <button id="export-xlsx-btn" class="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </div>
+    </div>
+</div>
