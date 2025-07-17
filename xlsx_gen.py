@@ -62,6 +62,8 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
     ws.cell(row=row_cursor, column=1).alignment = Alignment(horizontal='center'); row_cursor += 2
     in_table, table_data = False, []
     tnc_headers = ["Foreign Part:", "Local Part (Supply):", "Local Part (Installation):"]
+    
+    # REVISED: Added Payment Schedule headers to this list for extra spacing
     headers_needing_space = [
         "Local Part (Supply):",
         "Payment Schedule (Local Supply):",
@@ -566,9 +568,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         boq_ws = wb.create_sheet("Bill of Quantities")
         
         boq_title_cell = boq_ws.cell(row=1, column=1, value="Bill of Quantities")
-        max_col = boq_ws.max_column
-        if max_col > 1:
-            boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_col)
+        # REVISED: Merge title up to column F (6)
+        boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
         boq_title_cell.font = Font(name='Calibri', size=16, bold=True)
         boq_title_cell.fill = header_fill
         boq_title_cell.alignment = center_align_wrap
@@ -581,9 +582,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         ws.title = "Financial Offer"
         
         title_cell = ws.cell(row=1, column=1, value="Financial Offer")
-        max_col = ws.max_column
-        if max_col > 1:
-            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_col)
+        # REVISED: Merge title up to column F (6)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
         title_cell.font = Font(name='Calibri', size=16, bold=True)
         title_cell.fill = header_fill
         title_cell.alignment = center_align_wrap
@@ -601,18 +601,23 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         
         current_row_idx = ws.max_row + 2
         
+        # REVISED: Combine "In Words" label and value into a single merged cell
+        max_col_for_merge = ws.max_column
+
         if data.get('has_foreign_part'):
-            ws.cell(row=current_row_idx, column=1, value="In Words (Foreign Part):").font = bold_font
-            ws.cell(row=current_row_idx, column=1).fill = header_fill
-            ws.cell(row=current_row_idx, column=2, value=data.get('words_usd', 'N/A'))
-            ws.merge_cells(start_row=current_row_idx, start_column=2, end_row=current_row_idx, end_column=4)
+            in_words_text = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
+            cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
+            cell.font = bold_font
+            cell.fill = header_fill
+            ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=max_col_for_merge)
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            ws.cell(row=current_row_idx, column=1, value="In Words (Local Part):").font = bold_font
-            ws.cell(row=current_row_idx, column=1).fill = header_fill
-            ws.cell(row=current_row_idx, column=2, value=data.get('words_bdt', 'N/A'))
-            ws.merge_cells(start_row=current_row_idx, start_column=2, end_row=current_row_idx, end_column=4)
+            in_words_text = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
+            cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
+            cell.font = bold_font
+            cell.fill = header_fill
+            ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=max_col_for_merge)
             current_row_idx += 1
         
         if data.get('has_foreign_part') and freight > 0:
