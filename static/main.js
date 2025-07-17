@@ -808,7 +808,7 @@ const initializeApp = () => {
         }
     });
 
-    const handleProjectLoad = async (projectData) => { // Make the function async
+    const handleProjectLoad = async (projectData) => { 
         const projectType = projectData.projectType || 'offer';
     
         let targetTabId;
@@ -816,7 +816,7 @@ const initializeApp = () => {
             case 'offer':
                 targetTabId = 'generator';
                 break;
-            case 'po': // FIX: Correctly route PO projects to the purchase-order tab
+            case 'po':
                 targetTabId = 'purchase-order';
                 break;
             case 'challan':
@@ -826,14 +826,11 @@ const initializeApp = () => {
                 targetTabId = 'ai-helper';
                 break;
             default:
-                targetTabId = 'generator'; // Fallback to offer/generator tab
+                targetTabId = 'generator';
         }
         
-        // Await the tab switch. This initializes the module if needed and handles the "unsaved changes" dialog.
         await switchTab(targetTabId);
     
-        // After a successful switch, the module's global functions should be available.
-        // Use a small timeout to let the DOM updates from the tab switch settle before loading data.
         setTimeout(() => {
             switch (projectType) {
                 case 'challan':
@@ -852,7 +849,7 @@ const initializeApp = () => {
                         showToast("Error initializing AI Helper module.", true);
                     }
                     break;
-                case 'po': // ADDED: Case to handle loading PO data
+                case 'po':
                     if (window.loadPOData) {
                         window.loadPOData(projectData);
                         showToast('Purchase Order project loaded successfully.');
@@ -870,7 +867,7 @@ const initializeApp = () => {
                     }
                     break;
             }
-        }, 50); // A 50ms delay helps ensure the tab's DOM is fully ready.
+        }, 50); 
     };
 
     const handleProjectTableClick = async (e) => {
