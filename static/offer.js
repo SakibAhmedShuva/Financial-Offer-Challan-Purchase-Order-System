@@ -751,7 +751,7 @@ function initializeOfferModule(deps) {
             addHeader(headerRow2, `TOTAL (${h.currency})`, { className: `${h.key}-col` });
         });
 
-        addHeader(headerRow1, 'CATEGORY', { rowSpan: 2 });
+        addHeader(headerRow1, 'CATEGORY', { rowSpan: 2, className: 'text-center w-[10%]' });
         addHeader(headerRow1, 'Action', { rowSpan: 2 });
         offerTableHead.appendChild(headerRow1);
         offerTableHead.appendChild(headerRow2);
@@ -785,8 +785,8 @@ function initializeOfferModule(deps) {
             });
 
             rowHTML += `
-                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600">
-                    <select data-field="product_type" class="w-full p-1 bg-transparent dark:bg-slate-700 rounded border-slate-300 dark:border-slate-600 focus:ring-sky-500">
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 align-middle">
+                    <select data-field="product_type" class="w-full p-1 bg-transparent dark:bg-slate-700 rounded border-slate-300 dark:border-slate-600 focus:ring-sky-500 text-center">
                         <option value="FDS" ${item.product_type === 'FDS' ? 'selected' : ''}>FDS</option>
                         <option value="FPS" ${item.product_type === 'FPS' ? 'selected' : ''}>FPS</option>
                         <option value="FD" ${item.product_type === 'FD' ? 'selected' : ''}>FD</option>
@@ -794,10 +794,11 @@ function initializeOfferModule(deps) {
                         <option value="MISC" ${item.product_type === 'MISC' ? 'selected' : ''}>MISC</option>
                     </select>
                 </td>
-                <td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-2">
-                    <button class="move-item-up-btn text-slate-400 hover:text-blue-500" title="Move Up"><i class="fas fa-arrow-up"></i></button>
-                    <button class="move-item-down-btn text-slate-400 hover:text-blue-500" title="Move Down"><i class="fas fa-arrow-down"></i></button>
-                    <button class="remove-item-btn text-slate-400 hover:text-red-500" title="Remove Item"><i class="fas fa-trash"></i></button>
+                <td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-1">
+                    <button class="add-row-after-btn text-slate-400 hover:text-green-500 p-1" title="Add Row After"><i class="fas fa-plus-circle"></i></button>
+                    <button class="move-item-up-btn text-slate-400 hover:text-blue-500 p-1" title="Move Up"><i class="fas fa-arrow-up"></i></button>
+                    <button class="move-item-down-btn text-slate-400 hover:text-blue-500 p-1" title="Move Down"><i class="fas fa-arrow-down"></i></button>
+                    <button class="remove-item-btn text-slate-400 hover:text-red-500 p-1" title="Remove Item"><i class="fas fa-trash"></i></button>
                 </td>`;
             row.innerHTML = rowHTML;
             offerTableBody.appendChild(row);
@@ -1713,6 +1714,15 @@ function initializeOfferModule(deps) {
                 currentSortOrder = 'custom';
                 setupSortDropdown();
             }
+        } else if (button.classList.contains('add-row-after-btn')) {
+            const newItem = {
+                customId: `custom_${Date.now()}`, description: '', qty: 1, unit: 'Pcs',
+                foreign_price_usd: '0.00', foreign_total_usd: '0.00',
+                local_supply_price_bdt: '0.00', local_supply_total_bdt: '0.00',
+                installation_price_bdt: '0.00', installation_total_bdt: '0.00',
+                isCustom: true, source_type: 'local', product_type: 'MISC'
+            };
+            offerItems.splice(itemIndex + 1, 0, newItem);
         }
 
         renderOfferTable();
@@ -1724,16 +1734,29 @@ function initializeOfferModule(deps) {
     saveAsBtn.addEventListener('click', () => {
         if (saveAsBtn.disabled) return;
         
-        const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
-        const newName = NameController.generateOfferReference({
-            clientName: selectedClient.name,
-            categories: checkedCategories,
-            items: offerItems,
-            visibleColumns: visibleColumns
-        });
+        let suggestedName = '';
+        if (currentReferenceNumber) {
+            // Logic for existing projects: append or increment version
+            const versionMatch = currentReferenceNumber.match(/(V)(\d+)$/);
+            if (versionMatch) {
+                const newVersion = parseInt(versionMatch[2], 10) + 1;
+                suggestedName = currentReferenceNumber.replace(/(V)(\d+)$/, `V${newVersion}`);
+            } else {
+                suggestedName = `${currentReferenceNumber}V2`;
+            }
+        } else {
+            // Logic for new projects: generate a descriptive name
+            const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
+            suggestedName = NameController.generateOfferReference({
+                clientName: selectedClient.name,
+                categories: checkedCategories,
+                items: offerItems,
+                visibleColumns: visibleColumns
+            });
+        }
 
         document.getElementById('save-as-type').value = 'offer';
-        document.getElementById('save-as-name').value = newName;
+        document.getElementById('save-as-name').value = suggestedName;
         saveAsModal.classList.remove('hidden');
     });
     
@@ -1793,6 +1816,38 @@ function initializeOfferModule(deps) {
             sortDropdown.classList.add('hidden');
         }
     });
+
+    const mainScroller = document.querySelector('main');
+    if (mainScroller && offerTableBody) {
+        let isPanning = false;
+        let startY, startScrollTop;
+
+        offerTableBody.addEventListener('mousedown', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                isPanning = true;
+                startY = e.pageY;
+                startScrollTop = mainScroller.scrollTop;
+                offerTableBody.style.cursor = 'grabbing';
+                document.body.style.cursor = 'grabbing'; // Apply to body to avoid flicker
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+            e.preventDefault();
+            const walk = e.pageY - startY;
+            mainScroller.scrollTop = startScrollTop - walk;
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isPanning) {
+                isPanning = false;
+                offerTableBody.style.cursor = 'default';
+                document.body.style.cursor = 'default';
+            }
+        });
+    }
 
     window.addItemsToOffer = (itemsToAdd) => {
         if (!itemsToAdd || itemsToAdd.length === 0) return;
