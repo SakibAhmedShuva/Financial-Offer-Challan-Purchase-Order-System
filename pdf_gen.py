@@ -4,6 +4,15 @@ from datetime import datetime
 from fpdf import FPDF
 from app_helpers import html_to_plain_text, to_words_bdt, to_words_usd
 
+# --- Helper to prevent conversion errors ---
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == '':
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
 # --- PDF Custom Class ---
 class PDF(FPDF):
     _title = 'Financial Offer'
@@ -312,7 +321,7 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
         for group in visible_price_groups:
             for sub in group['sub']:
                 pdf.set_x(current_x)
-                val = float(item.get(sub['key'], 0))
+                val = safe_float(item.get(sub['key'], 0))
                 currency_symbol = '$' if 'usd' in sub['key'].lower() else ''
                 text = f"-{currency_symbol}{abs(val):,.2f}" if val < 0 else f"{currency_symbol}{val:,.2f}"
                 pdf.cell(sub['width'], row_height, text, 1, 0, sub['align'])
@@ -355,30 +364,30 @@ def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_group
         pdf.ln(row_height)
         pdf.set_text_color(0, 0, 0)
     
-    subtotal_values = {group['id']: sum(float(it.get(group['sub'][1]['key'], 0)) for it in items) for group in visible_price_groups}
+    subtotal_values = {group['id']: sum(safe_float(it.get(group['sub'][1]['key'], 0)) for it in items) for group in visible_price_groups}
 
-    freight = float(financials.get('freight_foreign_usd', 0)) if financials.get('use_freight') else 0
-    delivery = float(financials.get('delivery_local_bdt', 0)) if financials.get('use_delivery') else 0
-    vat = float(financials.get('vat_local_bdt', 0)) if financials.get('use_vat') else 0
-    ait = float(financials.get('ait_local_bdt', 0)) if financials.get('use_ait') else 0
-    discount_foreign = float(financials.get('discount_foreign_usd', 0)) if financials.get('use_discount_foreign') else 0
-    discount_local = float(financials.get('discount_local_bdt', 0)) if financials.get('use_discount_local') else 0
-    discount_install = float(financials.get('discount_installation_bdt', 0)) if financials.get('use_discount_installation') else 0
+    freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
+    delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
+    vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
+    ait = safe_float(financials.get('ait_local_bdt')) if financials.get('use_ait') else 0
+    discount_foreign = safe_float(financials.get('discount_foreign_usd')) if financials.get('use_discount_foreign') else 0
+    discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
+    discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
 
     grand_total_foreign = subtotal_values.get('foreign', 0) + freight - discount_foreign
-    grand_total_local = subtotal_values.get('local', 0) - discount_local
+    grand_total_local_supply = subtotal_values.get('local', 0) - discount_local
     grand_total_install = subtotal_values.get('install', 0) - discount_install
     
     visible_group_ids = [g['id'] for g in visible_price_groups]
-    if 'local' in visible_group_ids:
-        grand_total_local += delivery + vat + ait
-    elif 'install' in visible_group_ids:
-        grand_total_install += delivery + vat + ait
+    grand_total_bdt_combined = grand_total_local_supply + grand_total_install
+    
+    if 'local' in visible_group_ids or 'install' in visible_group_ids:
+        grand_total_bdt_combined += delivery + vat + ait
 
     grand_total_values = {
         'foreign': grand_total_foreign,
-        'local': grand_total_local,
-        'install': grand_total_install
+        'local': grand_total_local_supply,
+        'install': grand_total_install + delivery + vat + ait if 'local' not in visible_group_ids else grand_total_install
     }
 
     grand_total_label = financial_labels.get('grandtotalLocal', 'Grand Total (BDT):') if is_local_only else financial_labels.get('grandtotalForeign', 'Grand Total:')
@@ -387,20 +396,19 @@ def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_group
         add_summary_row(grand_total_label, grand_total_values, is_bold=True, is_grand_total=True)
     else:
         add_summary_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotal_values, is_bold=True)
-        
-        # REVISED: Conditionally add rows based on column visibility
-        is_foreign_visible_boq = any(g['id'] == 'foreign' for g in visible_price_groups)
-        is_local_visible_boq = any(g['id'] == 'local' for g in visible_price_groups)
+        is_foreign_visible_boq = 'foreign' in visible_group_ids
+        is_local_supply_visible_boq = 'local' in visible_group_ids
+        is_install_visible_boq = 'install' in visible_group_ids
 
         if freight > 0 and is_foreign_visible_boq:
             add_summary_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
         
-        if delivery > 0 and is_local_visible_boq:
-            add_summary_row(financial_labels.get('delivery', 'Delivery:'), {'local': delivery})
-        if vat > 0 and is_local_visible_boq:
-            add_summary_row(financial_labels.get('vat', 'VAT:'), {'local': vat})
-        if ait > 0 and is_local_visible_boq:
-            add_summary_row(financial_labels.get('ait', 'AIT:'), {'local': ait})
+        if delivery > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
+            add_summary_row(financial_labels.get('delivery', 'Delivery:'), {'local' if is_local_supply_visible_boq else 'install': delivery})
+        if vat > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
+            add_summary_row(financial_labels.get('vat', 'VAT:'), {'local' if is_local_supply_visible_boq else 'install': vat})
+        if ait > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
+            add_summary_row(financial_labels.get('ait', 'AIT:'), {'local' if is_local_supply_visible_boq else 'install': ait})
             
         if any(d > 0 for d in [discount_foreign, discount_local, discount_install]):
             discount_values = {k: v for k, v in {
@@ -418,29 +426,27 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     pdf.set_header_color(header_color_hex)
     pdf.alias_nb_pages()
     
-    # --- Recalculate totals and "in words" for consistency ---
     items = data.get('items', [])
     financials = data.get('financials', {})
 
-    subtotal_foreign = sum(float(it.get('foreign_total_usd', 0)) for it in items)
-    subtotal_local_supply = sum(float(it.get('local_supply_total_bdt', 0)) for it in items)
-    subtotal_installation = sum(float(it.get('installation_total_bdt', 0)) for it in items)
+    subtotal_foreign = sum(safe_float(it.get('foreign_total_usd', 0)) for it in items)
+    subtotal_local_supply = sum(safe_float(it.get('local_supply_total_bdt', 0)) for it in items)
+    subtotal_installation = sum(safe_float(it.get('installation_total_bdt', 0)) for it in items)
 
-    freight = float(financials.get('freight_foreign_usd', 0)) if financials.get('use_freight') else 0
-    delivery = float(financials.get('delivery_local_bdt', 0)) if financials.get('use_delivery') else 0
-    vat = float(financials.get('vat_local_bdt', 0)) if financials.get('use_vat') else 0
-    ait = float(financials.get('ait_local_bdt', 0)) if financials.get('use_ait') else 0
-    discount_foreign = float(financials.get('discount_foreign_usd', 0)) if financials.get('use_discount_foreign') else 0
-    discount_local = float(financials.get('discount_local_bdt', 0)) if financials.get('use_discount_local') else 0
-    discount_install = float(financials.get('discount_installation_bdt', 0)) if financials.get('use_discount_installation') else 0
+    freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
+    delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
+    vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
+    ait = safe_float(financials.get('ait_local_bdt')) if financials.get('use_ait') else 0
+    discount_foreign = safe_float(financials.get('discount_foreign_usd')) if financials.get('use_discount_foreign') else 0
+    discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
+    discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
 
     grand_total_usd = subtotal_foreign + freight - discount_foreign
     grand_total_bdt = subtotal_local_supply + subtotal_installation + delivery + vat + ait - discount_local - discount_install
     
     data['words_usd'] = to_words_usd(grand_total_usd)
     data['words_bdt'] = to_words_bdt(grand_total_bdt)
-    # --- End of recalculation ---
-
+    
     financial_labels = data.get('financialLabels', {})
     user_info = data.get('user', {})
     visible_columns, user_role = data.get('visibleColumns', {}), user_info.get('role', 'user')
@@ -450,7 +456,6 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     is_local_only = not is_foreign_visible and (is_local_visible or is_install_visible)
     is_local_part_visible = is_local_visible or is_install_visible
 
-    # REVISED: Ensure financial labels are correct based on visibility context
     has_freight_and_is_visible = freight > 0 and is_foreign_visible
     if has_freight_and_is_visible:
         financial_labels['subtotalForeign'] = 'Subtotal, Ex-Works:'
@@ -476,8 +481,8 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
                 {'key': 'po_total_usd', 'header': 'TOTAL\n(USD)', 'width': 20 * 0.8 * 1.05, 'align': 'R'}
             ]},
             {'id': 'local', 'visible': is_local_visible, 'header': financial_labels.get('localPrice', 'LOCAL SUPPLY PRICE'), 'width': 40 * 0.8 * 1.05, 'sub': [
-                {'key': 'local_supply_price_bdt', 'header': 'PRICE\n(BDT)', 'width': 40 * 0.8 * 1.05, 'align': 'R'},
-                {'key': 'local_supply_total_bdt', 'header': 'TOTAL\n(BDT)', 'width': 40 * 0.8 * 1.05, 'align': 'R'}
+                {'key': 'local_supply_price_bdt', 'header': 'PRICE\n(BDT)', 'width': 20 * 0.8 * 1.05, 'align': 'R'},
+                {'key': 'local_supply_total_bdt', 'header': 'TOTAL\n(BDT)', 'width': 20 * 0.8 * 1.05, 'align': 'R'}
             ]},
             {'id': 'install', 'visible': is_install_visible, 'header': financial_labels.get('installationPrice', 'INSTALLATION PRICE'), 'width': 40 * 0.8 * 1.05, 'sub': [
                 {'key': 'installation_price_bdt', 'header': 'PRICE\n(BDT)', 'width': 20 * 0.8 * 1.05, 'align': 'R'},
@@ -768,9 +773,9 @@ def generate_purchase_order_pdf(po_data, auth_dir, header_color_hex):
         x_after_desc = x_after_sl + col_widths['desc']
         pdf.set_x(x_after_desc)
         
-        pdf.cell(col_widths['po_price'], row_height, f"{float(item.get('po_price_usd', 0)):,}", 1, 0, 'R')
+        pdf.cell(col_widths['po_price'], row_height, f"{safe_float(item.get('po_price_usd', 0)):,}", 1, 0, 'R')
         pdf.cell(col_widths['unit'], row_height, sanitize_text(str(item.get('unit', 'Pcs'))), 1, 0, 'R')
-        pdf.cell(col_widths['total'], row_height, f"{float(item.get('po_total_usd', 0)):,}", 1, 1, 'R')
+        pdf.cell(col_widths['total'], row_height, f"{safe_float(item.get('po_total_usd', 0)):,}", 1, 1, 'R')
         
         pdf.set_xy(x_after_sl, start_y)
         pdf.rect(x_after_sl, start_y, col_widths['desc'], row_height)
