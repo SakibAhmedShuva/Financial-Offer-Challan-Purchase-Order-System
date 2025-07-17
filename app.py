@@ -237,9 +237,63 @@ def safe_float(value, default=0.0):
     try:
         if value is None or value == '':
             return default
+        # Attempt to convert, removing common currency symbols or commas
+        if isinstance(value, str):
+            value = value.replace('$', '').replace(',', '').strip()
         return float(value)
     except (ValueError, TypeError):
         return default
+
+def update_excel_price(filepath, sheet_name, item_code, price_data):
+    """Helper function to update a specific excel file."""
+    try:
+        wb = load_workbook(filepath)
+        if sheet_name not in wb.sheetnames:
+            # If sheet doesn't exist, create it from the first sheet's template
+            template_sheet = wb.worksheets[0]
+            ws = wb.copy_worksheet(template_sheet)
+            ws.title = sheet_name
+        else:
+            ws = wb[sheet_name]
+
+        header = [cell.value.lower().strip() if cell.value else '' for cell in ws[1]]
+        try:
+            item_code_col_idx = header.index('item_code')
+            price_col_idx = header.index(price_data['price_column'])
+            desc_col_idx = header.index('description')
+            unit_col_idx = header.index('unit')
+            # Find product_type column, might not exist in all sheets
+            product_type_col_idx = header.index('product_type') if 'product_type' in header else -1
+
+        except ValueError as e:
+            return (False, f"Required column not found in sheet '{sheet_name}': {e}")
+
+        # Search for item_code to update row
+        row_to_update = None
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            if row[item_code_col_idx] and str(row[item_code_col_idx]).strip() == item_code:
+                row_to_update = row_idx
+                break
+
+        if row_to_update:
+            # Update existing row
+            ws.cell(row=row_to_update, column=price_col_idx + 1, value=price_data['price_value'])
+        else:
+            # Add new row if item_code is not found
+            new_row_values = [''] * len(header)
+            new_row_values[item_code_col_idx] = item_code
+            new_row_values[price_col_idx] = price_data['price_value']
+            new_row_values[desc_col_idx] = price_data.get('description', '')
+            new_row_values[unit_col_idx] = price_data.get('unit', 'Pcs')
+            if product_type_col_idx != -1:
+                new_row_values[product_type_col_idx] = price_data.get('product_type', 'MISC')
+            ws.append(new_row_values)
+
+        wb.save(filepath)
+        return (True, f"Successfully updated item {item_code} in {os.path.basename(filepath)}.")
+
+    except Exception as e:
+        return (False, f"Error updating Excel file: {e}")
 
 # --- Export Functions ---
 def export_file(file_type, data):
@@ -1423,6 +1477,135 @@ def convert_to_words_endpoint():
         'words_usd': words_usd,
         'words_bdt': words_bdt
     })
+
+@app.route('/update_master_price', methods=['POST'])
+def update_master_price():
+    data = request.json
+    admin_email = data.get('adminEmail')
+
+    # Admin role check
+    users_df = pd.read_csv(os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE']))
+    user_role = users_df[users_df['email'] == admin_email]['role'].iloc[0]
+    if user_role != 'admin':
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    item_code = data.get('itemCode')
+    price_type = data.get('priceType') # e.g., 'foreign_price', 'local_supply_price', 'installation_price'
+    price_value = safe_float(data.get('priceValue'))
+    source_type = data.get('sourceType') # 'foreign' or 'local'
+    product_type = data.get('productType', 'MISC') # This is the sheet name
+
+    if not item_code:
+        return jsonify({'success': False, 'message': 'Item Code is required to update the master list.'}), 400
+
+    price_column_map = {
+        'foreign_price': 'offer_price',
+        'po_price': 'po_price',
+        'local_supply_price': 'offer_price',
+        'installation_price': 'installation'
+    }
+
+    if price_type not in price_column_map:
+        return jsonify({'success': False, 'message': f'Invalid price type: {price_type}'}), 400
+
+    price_column = price_column_map[price_type]
+
+    if source_type == 'foreign' or price_type == 'foreign_price':
+        filepath = CONFIG['PRICE_LIST_FILE']
+    else: # local or installation
+        filepath = CONFIG['LOCAL_PRICE_LIST_FILE']
+    
+    price_data = {
+        'price_column': price_column,
+        'price_value': price_value,
+        'description': data.get('description'),
+        'unit': data.get('unit'),
+        'product_type': product_type
+    }
+
+    success, message = update_excel_price(filepath, product_type, item_code, price_data)
+
+    if success:
+        log_activity(admin_email, "Master Price Update", f"Updated {item_code} to {price_value}", "N/A")
+        # Re-initialize data to reflect changes in search
+        print("Re-initializing data after price update...")
+        data_management.initialize_data(CONFIG, force_rebuild=True)
+        print("Data re-initialized.")
+
+    return jsonify({'success': success, 'message': message})
+
+
+@app.route('/autofill_master_prices', methods=['POST'])
+def autofill_master_prices():
+    admin_email = request.json.get('adminEmail')
+    users_df = pd.read_csv(os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE']))
+    user_role = users_df[users_df['email'] == admin_email]['role'].iloc[0]
+    if user_role != 'admin':
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    files_to_process = {
+        'foreign': CONFIG['PRICE_LIST_FILE'],
+        'local': CONFIG['LOCAL_PRICE_LIST_FILE']
+    }
+    
+    updated_items_count = 0
+    errors = []
+
+    for source, filepath in files_to_process.items():
+        try:
+            if not os.path.exists(filepath):
+                continue
+
+            wb = load_workbook(filepath)
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                header = [cell.value.lower().strip() if cell.value else '' for cell in ws[1]]
+                
+                try:
+                    offer_price_col_idx = header.index('offer_price')
+                    if 'installation' in header:
+                        install_price_col_idx = header.index('installation')
+                    else:
+                        # If 'installation' column doesn't exist, add it
+                        install_price_col_idx = len(header)
+                        ws.cell(row=1, column=install_price_col_idx + 1, value='installation')
+                except ValueError as e:
+                    errors.append(f"Skipping sheet '{sheet_name}' in {os.path.basename(filepath)}: Missing required column ({e})")
+                    continue
+                
+                for row_idx in range(2, ws.max_row + 1):
+                    install_cell = ws.cell(row=row_idx, column=install_price_col_idx + 1)
+                    install_price = safe_float(install_cell.value)
+                    
+                    if install_price == 0:
+                        offer_price_cell = ws.cell(row=row_idx, column=offer_price_col_idx + 1)
+                        offer_price = safe_float(offer_price_cell.value)
+                        
+                        if offer_price > 0:
+                            # Logic: Installation is 10% of offer price, rounded to nearest whole number
+                            calculated_install_price = round(offer_price * 0.10)
+                            install_cell.value = calculated_install_price
+                            updated_items_count += 1
+            
+            wb.save(filepath)
+
+        except Exception as e:
+            errors.append(f"Failed to process {os.path.basename(filepath)}: {e}")
+    
+    if updated_items_count > 0:
+        log_activity(admin_email, "Master Price Autofill", f"Auto-filled {updated_items_count} items.", "N/A")
+        print("Re-initializing data after autofill...")
+        data_management.initialize_data(CONFIG, force_rebuild=True)
+        print("Data re-initialized.")
+        message = f"Successfully updated {updated_items_count} item(s). "
+    else:
+        message = "No items needed updating. "
+
+    if errors:
+        message += "Encountered errors: " + "; ".join(errors)
+        return jsonify({'success': False, 'message': message})
+    
+    return jsonify({'success': True, 'message': message})
 
 # --- SocketIO Chat Handlers ---
 @app.route('/upload_chat_attachment', methods=['POST'])
