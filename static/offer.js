@@ -101,6 +101,14 @@ function initializeOfferModule(deps) {
     const foreignSummaryBlock = document.getElementById('foreign-summary');
     const localSummaryBlock = document.getElementById('local-summary');
     const installationSummaryBlock = document.getElementById('installation-summary');
+    const adminToolsDiv = document.getElementById('admin-offer-tools');
+    const autoFillBtn = document.getElementById('admin-autofill-prices-btn');
+
+    const htmlToText = (html) => {
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        return temp.textContent || temp.innerText || '';
+    };
 
     const cleanupSuggestions = () => {
         const dropdown = document.getElementById('offer-description-suggestions');
@@ -627,7 +635,8 @@ function initializeOfferModule(deps) {
                         foreign_price_usd: item.source_type === 'foreign' ? item.offer_price : 0.00,
                         local_supply_price_bdt: item.source_type === 'local' ? item.offer_price : 0.00,
                         installation_price_bdt: item.installation || 0.00,
-                        po_price_usd: item.po_price || 0.00
+                        po_price_usd: item.po_price || 0.00,
+                        isCustom: false
                     };
                     const qty = parseFloat(newItem.qty);
                     newItem.foreign_total_usd = (qty * parseFloat(newItem.foreign_price_usd)).toFixed(2);
@@ -738,7 +747,7 @@ function initializeOfferModule(deps) {
         addHeader(headerRow1, 'UNIT', { rowSpan: 2 });
 
         const priceHeaders = [
-            { title: 'FOREIGN PRICE', currency: 'USD', key: 'foreign', price_key: 'foreign_price_usd', total_key: 'foreign_total_usd', is_visible: visibleColumns.foreign_price },
+            { title: 'FOREIGN PRICE', currency: 'USD', key: 'foreign_price', price_key: 'foreign_price_usd', total_key: 'foreign_total_usd', is_visible: visibleColumns.foreign_price },
             { title: 'PO PRICE', currency: 'USD', key: 'po_price', price_key: 'po_price_usd', total_key: 'po_total_usd', is_visible: currentUser.role === 'admin' && visibleColumns.po_price},
             { title: 'LOCAL SUPPLY PRICE', currency: 'BDT', key: 'local_supply_price', price_key: 'local_supply_price_bdt', total_key: 'local_supply_total_bdt', is_visible: visibleColumns.local_supply_price},
             { title: 'INSTALLATION PRICE', currency: 'BDT', key: 'installation_price', price_key: 'installation_price_bdt', total_key: 'installation_total_bdt', is_visible: visibleColumns.installation_price }
@@ -777,9 +786,24 @@ function initializeOfferModule(deps) {
 
             priceHeaders.forEach(h => {
                 if(h.is_visible) {
+                    const isCustomPrice = item.isCustom && parseFloat(item[h.price_key] || 0) > 0;
+                    const priceCellClass = (currentUser.role === 'admin' && isCustomPrice) ? 'text-red-500 font-bold' : '';
                     const unitPrice = parseFloat(item[h.price_key] || 0).toFixed(2);
+            
+                    const saveBtnHtml = (currentUser.role === 'admin' && isCustomPrice)
+                        ? `<button class="save-price-to-master-btn text-xs text-green-500 hover:text-green-700 p-0.5 ml-1" title="Save this price to master list"
+                                   data-item-code="${item.item_code || ''}"
+                                   data-price-type="${h.key}"
+                                   data-price-value="${unitPrice}"
+                                   data-description="${htmlToText(item.description)}"
+                                   data-unit="${item.unit || 'Pcs'}"
+                                   data-product-type="${item.product_type || 'MISC'}"
+                                   data-source-type="${item.source_type || 'local'}"
+                           ><i class="fas fa-save"></i></button>`
+                        : '';
+
                     rowHTML += `
-                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right" contenteditable="true" data-field="${h.price_key}">${unitPrice}</td>
+                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right ${priceCellClass}" contenteditable="true" data-field="${h.price_key}">${unitPrice}${saveBtnHtml}</td>
                         <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${item[h.total_key] || '0.00'}</td>`;
                 }
             });
@@ -1588,7 +1612,8 @@ function initializeOfferModule(deps) {
                 foreign_price_usd: item.source_type === 'foreign' ? item.offer_price : 0.00,
                 local_supply_price_bdt: item.source_type === 'local' ? item.offer_price : 0.00,
                 installation_price_bdt: item.installation || 0.00,
-                po_price_usd: item.po_price || 0.00
+                po_price_usd: item.po_price || 0.00,
+                isCustom: false // Items from search are not custom initially
             };
             newItem.foreign_total_usd = (newItem.qty * parseFloat(newItem.foreign_price_usd)).toFixed(2);
             newItem.local_supply_total_bdt = (newItem.qty * parseFloat(newItem.local_supply_price_bdt)).toFixed(2);
@@ -1665,8 +1690,12 @@ function initializeOfferModule(deps) {
             if (field === 'description') {
                 handleDescriptionInput(e);
                 item[field] = target.innerHTML;
+                item.isCustom = true;
             } else {
                 item[field] = target.matches('[contenteditable]') ? target.innerHTML : target.value;
+                if (field.includes('price')) {
+                    item.isCustom = true;
+                }
             }
             
             const qty = parseFloat(item.qty || 1);
@@ -1691,7 +1720,7 @@ function initializeOfferModule(deps) {
         }
     });
 
-    offerTableBody.addEventListener('click', (e) => {
+    offerTableBody.addEventListener('click', async (e) => {
         const button = e.target.closest('button');
         if (!button) return;
         
@@ -1700,7 +1729,35 @@ function initializeOfferModule(deps) {
 
         const itemIndex = parseInt(row.dataset.itemIndex, 10);
 
-        if (button.classList.contains('remove-item-btn')) {
+        if (button.classList.contains('save-price-to-master-btn')) {
+            if (currentUser.role !== 'admin') return;
+            const itemData = { ...button.dataset };
+            const confirmed = await showConfirmModal(
+                `Are you sure you want to update the master price for <strong>${itemData.itemCode || 'this custom item'}</strong>?<br>New Price: <strong>${itemData.priceValue}</strong>`,
+                'Update Master Price List',
+                'bg-green-600 hover:bg-green-700',
+                'Confirm Update'
+            );
+            if (!confirmed) return;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const response = await fetch(`${API_URL}/update_master_price`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...itemData, adminEmail: currentUser.email })
+                });
+                const result = await response.json();
+                showToast(result.message, !result.success);
+                if (result.success) {
+                    offerItems[itemIndex].isCustom = false;
+                    renderOfferTable();
+                    captureState();
+                }
+            } catch (err) {
+                showToast(`An error occurred: ${err.message}`, true);
+                button.innerHTML = '<i class="fas fa-save"></i>';
+            }
+        } else if (button.classList.contains('remove-item-btn')) {
             offerItems.splice(itemIndex, 1);
         } else if (button.classList.contains('move-item-up-btn')) {
             if (itemIndex > 0) {
@@ -1725,11 +1782,43 @@ function initializeOfferModule(deps) {
             offerItems.splice(itemIndex + 1, 0, newItem);
         }
 
-        renderOfferTable();
-        renderOfferCategoryCheckboxes();
-        updateActionButtons();
-        captureState();
+        if (!button.classList.contains('save-price-to-master-btn')) {
+            renderOfferTable();
+            renderOfferCategoryCheckboxes();
+            updateActionButtons();
+            captureState();
+        }
     });
+    
+    if (autoFillBtn) {
+        autoFillBtn.addEventListener('click', async () => {
+            const confirmed = await showConfirmModal(
+                'This will scan the master price lists and attempt to fill in any missing price values. This can take a moment and will trigger a data re-initialization. Continue?',
+                'Auto-fill Master Prices',
+                'bg-red-600 hover:bg-red-700',
+                'Proceed'
+            );
+            if (!confirmed) return;
+    
+            autoFillBtn.disabled = true;
+            autoFillBtn.innerHTML = `<div class="loader !w-4 !h-4 !border-2"></div><span class="ml-2">Processing...</span>`;
+    
+            try {
+                const response = await fetch(`${API_URL}/autofill_master_prices`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ adminEmail: currentUser.email })
+                });
+                const result = await response.json();
+                showToast(result.message, !result.success);
+            } catch (err) {
+                showToast(`An error occurred: ${err.message}`, true);
+            } finally {
+                autoFillBtn.disabled = false;
+                autoFillBtn.innerHTML = '<i class="fas fa-magic"></i> Auto-fill Missing Prices';
+            }
+        });
+    }
 
     saveAsBtn.addEventListener('click', () => {
         if (saveAsBtn.disabled) return;
@@ -1858,6 +1947,7 @@ function initializeOfferModule(deps) {
             newItem.local_supply_total_bdt = (qty * parseFloat(newItem.local_supply_price_bdt || 0)).toFixed(2);
             newItem.installation_total_bdt = (qty * parseFloat(newItem.installation_price_bdt || 0)).toFixed(2);
             newItem.po_total_usd = (qty * parseFloat(newItem.po_price_usd || 0)).toFixed(2);
+            newItem.isCustom = false;
 
             if (newItem.source_type === 'foreign' && parseFloat(newItem.foreign_price_usd) > 0 && !tncInternationalCheckbox.checked) {
                 tncInternationalCheckbox.checked = true;
@@ -1996,6 +2086,10 @@ function initializeOfferModule(deps) {
             showToast('No matches found to replace.', false);
         }
     };
+
+    if (currentUser.role === 'admin' && adminToolsDiv) {
+        adminToolsDiv.classList.remove('hidden');
+    }
 
     setupColumnsDropdown();
     setupSortDropdown();
