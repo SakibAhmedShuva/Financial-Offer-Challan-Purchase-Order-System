@@ -105,7 +105,8 @@ class PDF(FPDF):
         self.cell(0, 6, f'Page {self.page_no()}/{{nb}}', 0, 0, 'R')
     
     def write_html(self, html, cell_height):
-        html = html.replace('\n', ' ')
+        html = str(html).replace('&nbsp;', ' ')
+        html = re.sub(r'<br\s*/?>', '\n', html)
         parts = re.split(r'(<.*?>)', html)
         
         for part in parts:
@@ -281,12 +282,11 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
     line_height = 5
     for i, item in enumerate(items):
         plain_desc_html = item.get('description', '')
-        clean_html = str(plain_desc_html).replace('&nbsp;', ' ')
-        plain_desc_text = html_to_plain_text(clean_html)
         
-        sanitized_desc = sanitize_text(plain_desc_text)
-        
-        desc_lines = pdf.multi_cell(sections['base'][1]['width'], line_height, sanitized_desc, 0, 'L', split_only=True)
+        # Height calculation based on plain text
+        plain_desc_text = html_to_plain_text(str(plain_desc_html).replace('&nbsp;', ' '))
+        sanitized_desc_for_height_calc = sanitize_text(plain_desc_text)
+        desc_lines = pdf.multi_cell(sections['base'][1]['width'], line_height, sanitized_desc_for_height_calc, 0, 'L', split_only=True)
         num_lines = len(desc_lines)
         row_height = (num_lines * line_height) + 4
         
@@ -298,22 +298,23 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
         start_y = pdf.get_y()
         current_x = pdf.l_margin
         
-        pdf.set_xy(current_x, start_y)
+        # SL cell
         pdf.cell(sections['base'][0]['width'], row_height, str(i + 1), 1, 0, 'C')
         current_x += sections['base'][0]['width']
         
-        pdf.set_xy(current_x, start_y)
+        # Description cell box
         pdf.rect(current_x, start_y, sections['base'][1]['width'], row_height)
-        pdf.set_xy(current_x + 1, start_y + (row_height - (num_lines * line_height)) / 2)
-        pdf.multi_cell(sections['base'][1]['width'] - 2, line_height, sanitized_desc, 0, 'L')
+        desc_text_x = current_x + 1
+        desc_text_y = start_y + 2 # Padding from top
         current_x += sections['base'][1]['width']
 
+        # Reset Y for other cells in the row
         pdf.set_y(start_y)
 
+        # Qty, Unit, and Price cells
         pdf.set_x(current_x)
         pdf.cell(sections['base'][2]['width'], row_height, str(item.get('qty', 1)), 1, 0, 'C')
         current_x += sections['base'][2]['width']
-
         pdf.set_x(current_x)
         pdf.cell(sections['base'][3]['width'], row_height, sanitize_text(item.get('unit', 'Pcs')), 1, 0, 'C')
         current_x += sections['base'][3]['width']
@@ -327,7 +328,25 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
                 pdf.cell(sub['width'], row_height, text, 1, 0, sub['align'])
                 current_x += sub['width']
         
+        # Write the formatted description text inside the box
+        pdf.set_xy(desc_text_x, desc_text_y)
+        
+        # Set margins to confine the write() call
+        initial_r_margin = pdf.r_margin
+        initial_l_margin = pdf.l_margin
+        desc_cell_width = sections['base'][1]['width'] - 2 # width with padding
+        pdf.set_left_margin(desc_text_x)
+        pdf.set_right_margin(pdf.w - desc_text_x - desc_cell_width)
+
+        pdf.write_html(plain_desc_html, line_height)
+        
+        # Restore margins
+        pdf.set_left_margin(initial_l_margin)
+        pdf.set_right_margin(initial_r_margin)
+
+        # Move cursor to next row
         pdf.set_y(start_y + row_height)
+
 
 def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only=False):
     financials, items = data.get('financials', {}), data.get('items', [])
