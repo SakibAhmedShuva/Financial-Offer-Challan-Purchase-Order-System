@@ -7,6 +7,15 @@ from openpyxl.drawing.image import Image
 from openpyxl.cell.rich_text import TextBlock, CellRichText, InlineFont
 from app_helpers import to_words_usd, to_words_bdt
 
+# --- Helper to prevent conversion errors ---
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == '':
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
 # --- XLSX Generation Functions ---
 def parse_html_to_richtext(html_string):
     if not isinstance(html_string, str): return str(html_string) if html_string is not None else ''
@@ -63,7 +72,6 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
     in_table, table_data = False, []
     tnc_headers = ["Foreign Part:", "Local Part (Supply):", "Local Part (Installation):"]
     
-    # REVISED: Added Payment Schedule headers to this list for extra spacing
     headers_needing_space = [
         "Local Part (Supply):",
         "Payment Schedule (Local Supply):",
@@ -167,29 +175,29 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
     subtotals = {}
     for section in visible_price_sections:
         total_key = section['sub'][1]['key']
-        subtotals[section['key']] = sum(float(it.get(total_key, 0)) for it in items)
+        subtotals[section['key']] = sum(safe_float(it.get(total_key, 0)) for it in items)
     
-    freight = float(financials.get('freight_foreign_usd', 0)) if financials.get('use_freight') else 0
-    delivery = float(financials.get('delivery_local_bdt', 0)) if financials.get('use_delivery') else 0
-    vat = float(financials.get('vat_local_bdt', 0)) if financials.get('use_vat') else 0
-    ait = float(financials.get('ait_local_bdt', 0)) if financials.get('use_ait') else 0
-    discount_foreign = float(financials.get('discount_foreign_usd', 0)) if financials.get('use_discount_foreign') else 0
-    discount_local = float(financials.get('discount_local_bdt', 0)) if financials.get('use_discount_local') else 0
-    discount_install = float(financials.get('discount_installation_bdt', 0)) if financials.get('use_discount_installation') else 0
+    freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
+    delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
+    vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
+    ait = safe_float(financials.get('ait_local_bdt')) if financials.get('use_ait') else 0
+    discount_foreign = safe_float(financials.get('discount_foreign_usd')) if financials.get('use_discount_foreign') else 0
+    discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
+    discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
 
     grand_total_foreign = subtotals.get('foreign', 0) + freight - discount_foreign
-    grand_total_local = subtotals.get('local_supply_price', 0) - discount_local
+    grand_total_local_supply = subtotals.get('local_supply_price', 0) - discount_local
     grand_total_install = subtotals.get('installation_price', 0) - discount_install
 
     visible_section_keys = [s['key'] for s in visible_price_sections]
     if 'local_supply_price' in visible_section_keys:
-        grand_total_local += delivery + vat + ait
+        grand_total_local_supply += delivery + vat + ait
     elif 'installation_price' in visible_section_keys:
         grand_total_install += delivery + vat + ait
         
     grand_totals = {
         'foreign': grand_total_foreign,
-        'local_supply_price': grand_total_local,
+        'local_supply_price': grand_total_local_supply,
         'installation_price': grand_total_install
     }
     
@@ -237,16 +245,30 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if is_grand_total:
                  cell.fill = header_fill
 
-
     if has_additional_charges:
-        add_financial_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotals, is_bold=True)
-        # REVISED: Conditionally add rows based on column visibility
-        if freight > 0 and 'foreign' in visible_section_keys:
+        # NEW: Added separate sub-total for local supply
+        local_supply_subtotal = {'local_supply_price': subtotals.get('local_supply_price', 0)}
+        if local_supply_subtotal['local_supply_price'] > 0:
+            add_financial_row("Sub-Total (Local Supply):", local_supply_subtotal, is_bold=True)
+            
+        if 'installation_price' in visible_section_keys:
+            install_subtotal = {'installation_price': subtotals.get('installation_price', 0)}
+            add_financial_row("Sub-Total (Installation):", install_subtotal, is_bold=True)
+
+        is_foreign_visible_boq = 'foreign' in visible_section_keys
+        is_local_supply_visible_boq = 'local_supply_price' in visible_section_keys
+        is_install_visible_boq = 'installation_price' in visible_section_keys
+
+        if freight > 0 and is_foreign_visible_boq:
             add_financial_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
-        if 'local_supply_price' in visible_section_keys:
-            if delivery > 0: add_financial_row(financial_labels.get('delivery', 'Delivery:'), {'local_supply_price': delivery})
-            if vat > 0: add_financial_row(financial_labels.get('vat', 'VAT:'), {'local_supply_price': vat})
-            if ait > 0: add_financial_row(financial_labels.get('ait', 'AIT:'), {'local_supply_price': ait})
+        
+        if delivery > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
+            add_financial_row(financial_labels.get('delivery', 'Delivery:'), {'local_supply_price' if is_local_supply_visible_boq else 'installation_price': delivery})
+        if vat > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
+            add_financial_row(financial_labels.get('vat', 'VAT:'), {'local_supply_price' if is_local_supply_visible_boq else 'installation_price': vat})
+        if ait > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
+            add_financial_row(financial_labels.get('ait', 'AIT:'), {'local_supply_price' if is_local_supply_visible_boq else 'installation_price': ait})
+            
         if any(d > 0 for d in [discount_foreign, discount_local, discount_install]):
             discount_values = {
                 'foreign': -discount_foreign if discount_foreign > 0 else None,
@@ -254,8 +276,10 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 'installation_price': -discount_install if discount_install > 0 else None
             }
             add_financial_row("Discount:", {k: v for k, v in discount_values.items() if v is not None}, is_red=True, is_bold=True)
-
-    add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
+    
+    grand_total_bdt = grand_total_local_supply + grand_total_install
+    final_totals = {'foreign': grand_total_foreign, 'local_supply_price': grand_total_bdt}
+    add_financial_row(grand_total_label, final_totals, is_grand_total=True)
 
 
 def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
@@ -321,7 +345,7 @@ def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
     
     for i, item in enumerate(items):
         row_data = [i + 1, parse_html_to_richtext(item.get('description', '')), int(item.get('qty', 1)), item.get('unit', 'Pcs')]
-        row_data.extend([float(item.get(sub['key'], 0)) for section in visible_price_sections for sub in section['sub']])
+        row_data.extend([safe_float(item.get(sub['key'], 0)) for section in visible_price_sections for sub in section['sub']])
         
         ws.append(row_data)
         current_row_obj = ws[ws.max_row]
@@ -354,29 +378,27 @@ def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
 def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     wb = Workbook()
     
-    # --- Recalculate totals and "in words" for consistency ---
     items = data.get('items', [])
     financials = data.get('financials', {})
 
-    subtotal_foreign = sum(float(it.get('foreign_total_usd', 0)) for it in items)
-    subtotal_local_supply = sum(float(it.get('local_supply_total_bdt', 0)) for it in items)
-    subtotal_installation = sum(float(it.get('installation_total_bdt', 0)) for it in items)
+    subtotal_foreign = sum(safe_float(it.get('foreign_total_usd', 0)) for it in items)
+    subtotal_local_supply = sum(safe_float(it.get('local_supply_total_bdt', 0)) for it in items)
+    subtotal_installation = sum(safe_float(it.get('installation_total_bdt', 0)) for it in items)
 
-    freight = float(financials.get('freight_foreign_usd', 0)) if financials.get('use_freight') else 0
-    delivery = float(financials.get('delivery_local_bdt', 0)) if financials.get('use_delivery') else 0
-    vat = float(financials.get('vat_local_bdt', 0)) if financials.get('use_vat') else 0
-    ait = float(financials.get('ait_local_bdt', 0)) if financials.get('use_ait') else 0
-    discount_foreign = float(financials.get('discount_foreign_usd', 0)) if financials.get('use_discount_foreign') else 0
-    discount_local = float(financials.get('discount_local_bdt', 0)) if financials.get('use_discount_local') else 0
-    discount_install = float(financials.get('discount_installation_bdt', 0)) if financials.get('use_discount_installation') else 0
+    freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
+    delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
+    vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
+    ait = safe_float(financials.get('ait_local_bdt')) if financials.get('use_ait') else 0
+    discount_foreign = safe_float(financials.get('discount_foreign_usd')) if financials.get('use_discount_foreign') else 0
+    discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
+    discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
 
     grand_total_usd = subtotal_foreign + freight - discount_foreign
     grand_total_bdt = subtotal_local_supply + subtotal_installation + delivery + vat + ait - discount_local - discount_install
     
     data['words_usd'] = to_words_usd(grand_total_usd)
     data['words_bdt'] = to_words_bdt(grand_total_bdt)
-    # --- End of recalculation ---
-
+    
     is_summary_enabled = data.get('isSummaryPageEnabled', False)
     financial_labels = data.get('financialLabels', {})
     
@@ -395,7 +417,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     is_local_only = not is_foreign_visible and (is_local_visible or is_install_visible)
     is_local_part_visible = is_local_visible or is_install_visible
 
-    # REVISED: Add logic to ensure financial labels are correct based on visibility context
     has_freight_and_is_visible = freight > 0 and is_foreign_visible
     if has_freight_and_is_visible:
         financial_labels['subtotalForeign'] = 'Subtotal, Ex-Works:'
@@ -480,7 +501,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         summary_data = []
         if has_additional_charges:
             summary_data.append((financial_labels.get('subtotalForeign', 'Sub-Total:'), sub_total_usd, sub_total_bdt))
-            # REVISED: Conditionally add rows
             if freight > 0 and is_foreign_visible:
                 summary_data.append((financial_labels.get('freight', 'Sea Freight:'), freight, None))
             if is_local_part_visible:
@@ -668,9 +688,9 @@ def generate_purchase_order_xlsx(po_data, auth_dir, header_color_hex="D6EAF8"):
 
     grand_total = 0
     for i, item in enumerate(items):
-        po_total = float(item.get('po_total_usd', 0))
+        po_total = safe_float(item.get('po_total_usd', 0))
         grand_total += po_total
-        row_data = [i + 1, parse_html_to_richtext(item.get('description', '')), float(item.get('po_price_usd', 0)), int(item.get('qty', 1)), item.get('unit', 'Pcs'), po_total]
+        row_data = [i + 1, parse_html_to_richtext(item.get('description', '')), safe_float(item.get('po_price_usd', 0)), int(item.get('qty', 1)), item.get('unit', 'Pcs'), po_total]
         ws.append(row_data)
         current_row = ws[ws.max_row]
         for idx, cell in enumerate(current_row):
