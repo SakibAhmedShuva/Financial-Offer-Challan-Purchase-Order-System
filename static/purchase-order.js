@@ -882,9 +882,18 @@ function initializePurchaseOrderModule(deps) {
         if (savePOBtn.disabled) return;
         if (!currentPOId) {
             document.getElementById('save-as-type').value = 'po';
-            const suggestedName = NameController.generatePOFilename({
-                offerReferenceNumber: offerReferenceNumberForPO || "New_PO"
-            }).replace(/\.(pdf|xlsx)$/, '');
+            const currentName = poProjectName.textContent;
+            let suggestedName = '';
+    
+            const versionMatch = currentName.match(/(V)(\d+)$/);
+            if (versionMatch) {
+                const currentVersion = parseInt(versionMatch[2], 10);
+                const newVersion = currentVersion + 1;
+                suggestedName = currentName.replace(/(V)(\d+)$/, `V${newVersion}`);
+            } else {
+                suggestedName = `${currentName}V2`;
+            }
+            
             document.getElementById('save-as-name').value = suggestedName;
             saveAsModal.classList.remove('hidden');
         } else {
