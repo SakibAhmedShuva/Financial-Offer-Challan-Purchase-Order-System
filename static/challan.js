@@ -198,10 +198,11 @@ function initializeChallanModule(deps) {
                 <td class="p-2 w-[60%] border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
                 <td class="p-2 w-[10%] border border-slate-300 dark:border-slate-600"><input type="number" class="challan-qty-input w-20 p-1 bg-transparent dark:bg-transparent rounded text-center" min="1" value="${item.qty||1}"></td>
                 <td class="p-2 w-[15%] border border-slate-300 dark:border-slate-600 text-center" contenteditable="true" data-field="unit">${item.unit||'Pcs'}</td>
-                <td class="text-center p-2 w-[10%] border border-slate-300 dark:border-slate-600 space-x-2">
-                    <button class="move-challan-item-up-btn text-slate-400 hover:text-blue-500" title="Move Up"><i class="fas fa-arrow-up"></i></button>
-                    <button class="move-challan-item-down-btn text-slate-400 hover:text-blue-500" title="Move Down"><i class="fas fa-arrow-down"></i></button>
-                    <button class="remove-challan-item-btn text-slate-400 hover:text-red-500" title="Remove"><i class="fas fa-trash"></i></button>
+                <td class="text-center p-2 w-[10%] border border-slate-300 dark:border-slate-600 space-x-1">
+                    <button class="add-row-after-btn text-slate-400 hover:text-green-500 p-1" title="Add Row After"><i class="fas fa-plus-circle"></i></button>
+                    <button class="move-challan-item-up-btn text-slate-400 hover:text-blue-500 p-1" title="Move Up"><i class="fas fa-arrow-up"></i></button>
+                    <button class="move-challan-item-down-btn text-slate-400 hover:text-blue-500 p-1" title="Move Down"><i class="fas fa-arrow-down"></i></button>
+                    <button class="remove-challan-item-btn text-slate-400 hover:text-red-500 p-1" title="Remove"><i class="fas fa-trash"></i></button>
                 </td>`;
             tableBody.appendChild(row);
         });
@@ -632,6 +633,12 @@ function initializeChallanModule(deps) {
                 currentSortOrder = 'custom'; 
                 setupSortDropdown(); 
             }
+        } else if (button.classList.contains('add-row-after-btn')) {
+            const newItem = {
+                sl: challanItems.length + 1, description: '', qty: 1, unit: 'Pcs',
+                product_type: 'Custom', isCustom: true
+            };
+            challanItems.splice(itemIndex + 1, 0, newItem);
         }
         renderChallanTable(); renderChallanCategoryCheckboxes(); updateChallanActionButtons(); captureState();
     });
@@ -669,18 +676,70 @@ function initializeChallanModule(deps) {
     saveAsBtn.addEventListener('click', () => { 
         if (saveAsBtn.disabled) return;
         
+        let suggestedName = '';
         const cats = Array.from(document.querySelectorAll('#challan-category-checkboxes input:checked')).map(cb => cb.value);
-        const suggestedName = NameController.generateChallanFilename({
+        const currentName = NameController.generateChallanFilename({
             challanRef: refDisplay.textContent.trim(),
             clientName: selectedChallanClient.name,
             categories: cats,
             fileType: 'pdf'
         }).replace(/\.pdf$/, '');
 
+        if (currentChallanId) {
+            // Logic for existing, loaded challans: add or increment version
+            const versionRegex = /(DC_)(\d+)(V)(\d+)/;
+            const versionMatch = currentName.match(versionRegex);
+
+            if (versionMatch) {
+                const prefix = versionMatch[1];
+                const challanNum = versionMatch[2];
+                const currentVersion = parseInt(versionMatch[4], 10);
+                suggestedName = currentName.replace(versionRegex, `${prefix}${challanNum}V${currentVersion + 1}`);
+            } else {
+                const baseRegex = /(DC_)(\d+)/;
+                suggestedName = currentName.replace(baseRegex, `$1$2V2`);
+            }
+        } else {
+            // Logic for a brand new challan being saved for the first time
+            suggestedName = currentName;
+        }
+
         document.getElementById('save-as-type').value = 'challan'; 
         document.getElementById('save-as-name').value = suggestedName; 
         saveAsModal.classList.remove('hidden'); 
     });
+    
+    const mainScroller = document.querySelector('main');
+    if (mainScroller && tableBody) {
+        let isPanning = false;
+        let startY, startScrollTop;
+
+        tableBody.addEventListener('mousedown', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                isPanning = true;
+                startY = e.pageY;
+                startScrollTop = mainScroller.scrollTop;
+                tableBody.style.cursor = 'grabbing';
+                document.body.style.cursor = 'grabbing';
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+            e.preventDefault();
+            const walk = e.pageY - startY;
+            mainScroller.scrollTop = startScrollTop - walk;
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isPanning) {
+                isPanning = false;
+                tableBody.style.cursor = 'default';
+                document.body.style.cursor = 'default';
+            }
+        });
+    }
 
     // --- GLOBAL FUNCTIONS & INITIALIZATION ---
     window.addItemsToChallan = (itemsToAdd) => {
