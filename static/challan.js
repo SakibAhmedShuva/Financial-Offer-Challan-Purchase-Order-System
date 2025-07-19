@@ -190,7 +190,7 @@ function initializeChallanModule(deps) {
         tableActions.style.display = 'block';
 
         if(challanItems.length === 0) return;
-        tableHead.innerHTML=`<tr>${['Sl.','Description','Qty','Unit','Action'].map(h=>`<th class="p-2 text-left border border-slate-300 dark:border-slate-600">${h}</th>`).join('')}</tr>`;
+        tableHead.innerHTML=`<tr>${['Sl.','Description','Qty','Unit','Action'].map(h=>`<th class="p-2 text-center border border-slate-300 dark:border-slate-600">${h}</th>`).join('')}</tr>`;
         challanItems.forEach((item,index)=>{
             const row=document.createElement('tr'); row.dataset.itemIndex=index; row.className="border-t border-slate-200 dark:border-slate-700";
             row.innerHTML=`
