@@ -10,6 +10,7 @@ function initializeChallanModule(deps) {
     let activeDescriptionCell = null;
     let activeScrollListener = null; 
     let activeKeydownHandler = null;
+    let draggedItemIndex = null; // For drag and drop
 
     // --- UNDO/REDO STATE ---
     let history = [];
@@ -190,18 +191,19 @@ function initializeChallanModule(deps) {
         tableActions.style.display = 'block';
 
         if(challanItems.length === 0) return;
-        tableHead.innerHTML=`<tr>${['Sl.','Description','Qty','Unit','Action'].map(h=>`<th class="p-2 text-center border border-slate-300 dark:border-slate-600">${h}</th>`).join('')}</tr>`;
+        const headers = ['<i class="fas fa-grip-vertical text-slate-400"></i>', 'Sl.', 'Description', 'Qty', 'Unit', 'Action'];
+        tableHead.innerHTML = `<tr>${headers.map(h => `<th class="p-2 text-center border border-slate-300 dark:border-slate-600">${h}</th>`).join('')}</tr>`;
+        
         challanItems.forEach((item,index)=>{
             const row=document.createElement('tr'); row.dataset.itemIndex=index; row.className="border-t border-slate-200 dark:border-slate-700";
             row.innerHTML=`
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle" draggable="true"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
                 <td class="text-center p-2 w-[5%] border border-slate-300 dark:border-slate-600">${item.sl||index+1}</td>
                 <td class="p-2 w-[60%] border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
                 <td class="p-2 w-[10%] border border-slate-300 dark:border-slate-600"><input type="number" class="challan-qty-input w-20 p-1 bg-transparent dark:bg-transparent rounded text-center" min="1" value="${item.qty||1}"></td>
                 <td class="p-2 w-[15%] border border-slate-300 dark:border-slate-600 text-center" contenteditable="true" data-field="unit">${item.unit||'Pcs'}</td>
                 <td class="text-center p-2 w-[10%] border border-slate-300 dark:border-slate-600 space-x-1">
                     <button class="add-row-after-btn text-slate-400 hover:text-green-500 p-1" title="Add Row After"><i class="fas fa-plus-circle"></i></button>
-                    <button class="move-challan-item-up-btn text-slate-400 hover:text-blue-500 p-1" title="Move Up"><i class="fas fa-arrow-up"></i></button>
-                    <button class="move-challan-item-down-btn text-slate-400 hover:text-blue-500 p-1" title="Move Down"><i class="fas fa-arrow-down"></i></button>
                     <button class="remove-challan-item-btn text-slate-400 hover:text-red-500 p-1" title="Remove"><i class="fas fa-trash"></i></button>
                 </td>`;
             tableBody.appendChild(row);
@@ -621,18 +623,6 @@ function initializeChallanModule(deps) {
         
         if(button.classList.contains('remove-challan-item-btn')){
             challanItems.splice(itemIndex, 1);
-        } else if (button.classList.contains('move-challan-item-up-btn')) {
-            if (itemIndex > 0) {
-                [challanItems[itemIndex], challanItems[itemIndex - 1]] = [challanItems[itemIndex - 1], challanItems[itemIndex]];
-                currentSortOrder = 'custom'; 
-                setupSortDropdown(); 
-            }
-        } else if (button.classList.contains('move-challan-item-down-btn')) {
-            if (itemIndex < challanItems.length - 1) {
-                [challanItems[itemIndex], challanItems[itemIndex + 1]] = [challanItems[itemIndex + 1], challanItems[itemIndex]];
-                currentSortOrder = 'custom'; 
-                setupSortDropdown(); 
-            }
         } else if (button.classList.contains('add-row-after-btn')) {
             const newItem = {
                 sl: challanItems.length + 1, description: '', qty: 1, unit: 'Pcs',
@@ -709,37 +699,45 @@ function initializeChallanModule(deps) {
         saveAsModal.classList.remove('hidden'); 
     });
     
-    const mainScroller = document.querySelector('main');
-    if (mainScroller && tableBody) {
-        let isPanning = false;
-        let startY, startScrollTop;
-
-        tableBody.addEventListener('mousedown', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                isPanning = true;
-                startY = e.pageY;
-                startScrollTop = mainScroller.scrollTop;
-                tableBody.style.cursor = 'grabbing';
-                document.body.style.cursor = 'grabbing';
-            }
-        });
-
-        window.addEventListener('mousemove', (e) => {
-            if (!isPanning) return;
+    // Drag and Drop Listeners
+    tableBody.addEventListener('dragstart', (e) => {
+        const handle = e.target.closest('.move-handle');
+        if (handle) {
+            const row = handle.closest('tr');
+            draggedItemIndex = parseInt(row.dataset.itemIndex, 10);
+            e.dataTransfer.effectAllowed = 'move';
+            row.classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
+        } else {
             e.preventDefault();
-            const walk = e.pageY - startY;
-            mainScroller.scrollTop = startScrollTop - walk;
-        });
+        }
+    });
 
-        window.addEventListener('mouseup', () => {
-            if (isPanning) {
-                isPanning = false;
-                tableBody.style.cursor = 'default';
-                document.body.style.cursor = 'default';
-            }
-        });
-    }
+    tableBody.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+
+    tableBody.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetRow = e.target.closest('tr');
+        if (targetRow && draggedItemIndex !== null) {
+            const targetIndex = parseInt(targetRow.dataset.itemIndex, 10);
+            const draggedItem = challanItems.splice(draggedItemIndex, 1)[0];
+            challanItems.splice(targetIndex, 0, draggedItem);
+            currentSortOrder = 'custom';
+            setupSortDropdown();
+            renderChallanTable();
+            captureState();
+        }
+    });
+
+    tableBody.addEventListener('dragend', (e) => {
+        const draggedRow = tableBody.querySelector('.bg-yellow-200');
+        if (draggedRow) {
+            draggedRow.classList.remove('bg-yellow-200', 'dark:bg-yellow-800/50');
+        }
+        draggedItemIndex = null;
+    });
+
 
     // --- GLOBAL FUNCTIONS & INITIALIZATION ---
     window.addItemsToChallan = (itemsToAdd) => {
