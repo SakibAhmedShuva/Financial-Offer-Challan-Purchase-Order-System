@@ -11,6 +11,7 @@ function initializePurchaseOrderModule(deps) {
     let activeDescriptionCell = null;
     let activeScrollListener = null;
     let activeKeydownHandler = null;
+    let draggedItemIndex = null; // For drag and drop
 
     // --- UNDO/REDO STATE ---
     let history = [];
@@ -222,6 +223,7 @@ function initializePurchaseOrderModule(deps) {
             row.appendChild(th);
         };
         
+        addHeader(headerRow1, '<i class="fas fa-grip-vertical text-slate-400"></i>', { rowSpan: 2 });
         addHeader(headerRow1, 'SL NO', { rowSpan: 2 });
         addHeader(headerRow1, 'DESCRIPTION', { rowSpan: 2, className: 'w-2/5' });
         addHeader(headerRow1, 'QTY', { rowSpan: 2 });
@@ -247,6 +249,7 @@ function initializePurchaseOrderModule(deps) {
             row.dataset.itemIndex = index;
             row.className = "border-t border-slate-200 dark:border-slate-700";
             let rowHTML = `
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle" draggable="true"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
                 <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
@@ -268,8 +271,7 @@ function initializePurchaseOrderModule(deps) {
             }
 
             rowHTML += `<td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-2">
-                <button class="move-po-item-up-btn text-slate-400 hover:text-blue-500" title="Move Up"><i class="fas fa-arrow-up"></i></button>
-                <button class="move-po-item-down-btn text-slate-400 hover:text-blue-500" title="Move Down"><i class="fas fa-arrow-down"></i></button>
+                <button class="add-row-after-btn text-slate-400 hover:text-green-500 p-1" title="Add Row After"><i class="fas fa-plus-circle"></i></button>
                 <button class="remove-po-item-btn text-slate-400 hover:text-red-500" title="Remove Item"><i class="fas fa-trash"></i></button>
             </td>`;
             row.innerHTML = rowHTML;
@@ -858,18 +860,21 @@ function initializePurchaseOrderModule(deps) {
 
         if (button.classList.contains('remove-po-item-btn')) {
             poItems.splice(itemIndex, 1);
-        } else if (button.classList.contains('move-po-item-up-btn')) {
-            if (itemIndex > 0) {
-                [poItems[itemIndex], poItems[itemIndex - 1]] = [poItems[itemIndex - 1], poItems[itemIndex]];
-                currentSortOrder = 'custom';
-                setupSortDropdown();
-            }
-        } else if (button.classList.contains('move-po-item-down-btn')) {
-             if (itemIndex < poItems.length - 1) {
-                [poItems[itemIndex], poItems[itemIndex + 1]] = [poItems[itemIndex + 1], poItems[itemIndex]];
-                currentSortOrder = 'custom';
-                setupSortDropdown();
-            }
+        } else if (button.classList.contains('add-row-after-btn')) {
+            const newItem = {
+                customId: `custom_po_${Date.now()}`,
+                description: '',
+                qty: 1,
+                unit: 'Pcs',
+                po_price_usd: '0.00',
+                po_total_usd: '0.00',
+                po_price_bdt: '0.00',
+                po_total_bdt: '0.00',
+                isCustom: true,
+                source_type: 'custom', 
+                product_type: 'Custom'
+            };
+            poItems.splice(itemIndex + 1, 0, newItem);
         }
 
         renderPOTable(); 
@@ -931,6 +936,46 @@ function initializePurchaseOrderModule(deps) {
             }
         }
     });
+    
+    // Drag and Drop Listeners
+    poTableBody.addEventListener('dragstart', (e) => {
+        const handle = e.target.closest('.move-handle');
+        if (handle) {
+            const row = handle.closest('tr');
+            draggedItemIndex = parseInt(row.dataset.itemIndex, 10);
+            e.dataTransfer.effectAllowed = 'move';
+            row.classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
+        } else {
+            e.preventDefault();
+        }
+    });
+
+    poTableBody.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+
+    poTableBody.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetRow = e.target.closest('tr');
+        if (targetRow && draggedItemIndex !== null) {
+            const targetIndex = parseInt(targetRow.dataset.itemIndex, 10);
+            const draggedItem = poItems.splice(draggedItemIndex, 1)[0];
+            poItems.splice(targetIndex, 0, draggedItem);
+            currentSortOrder = 'custom';
+            setupSortDropdown();
+            renderPOTable();
+            captureState();
+        }
+    });
+
+    poTableBody.addEventListener('dragend', (e) => {
+        const draggedRow = poTableBody.querySelector('.bg-yellow-200');
+        if (draggedRow) {
+            draggedRow.classList.remove('bg-yellow-200', 'dark:bg-yellow-800/50');
+        }
+        draggedItemIndex = null;
+    });
+
 
     window.loadPOData = (projectData) => {
         resetPOState();
