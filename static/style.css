@@ -1,0 +1,300 @@
+/* Custom scrollbar for a modern look */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #94a3b8; /* slate-400 */
+    border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb {
+    background: #475569; /* slate-600 */
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #64748b; /* slate-500 */
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: #334155; /* slate-700 */
+}
+
+/* --- ADDED: Sidebar Active Link Style --- */
+.tab-button.active {
+    background-color: rgb(14 165 233 / 0.1); /* sky-500 with 10% opacity */
+    color: #f8fafc; /* slate-50 */
+    border-left: 4px solid #38bdf8; /* sky-400 */
+    padding-left: calc(1rem - 4px); /* Adjust padding to account for border */
+}
+
+.tab-button.active i {
+    color: #38bdf8; /* sky-400 */
+}
+
+
+/* Custom search results dropdown */
+.search-results {
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* Base table styling */
+.excel-table {
+    table-layout: auto;
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.excel-table th, .excel-table td {
+    border: 1px solid #e2e8f0; /* slate-200 */
+    vertical-align: middle;
+    padding: 0.75rem;
+}
+.dark .excel-table th, .dark .excel-table td {
+    border-color: #334155; /* slate-700 */
+}
+
+.excel-table th {
+    font-weight: 600;
+    text-align: left;
+    background-color: #f8fafc; /* slate-50 */
+}
+.dark .excel-table th {
+    background-color: #1e293b; /* slate-800 */
+}
+
+
+/* Content-editable focus state */
+[contenteditable]:focus {
+    outline: 2px solid #38bdf8; /* sky-400 */
+    box-shadow: 0 0 0 2px #38bdf8;
+    border-radius: 4px;
+}
+
+/* Description editor toolbar */
+.description-cell { position: relative; }
+#description-toolbar {
+    position: absolute;
+    display: none;
+    background: #1e293b; /* slate-800 */
+    border: 1px solid #334155; /* slate-700 */
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+    z-index: 100;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+#description-toolbar button {
+    background: #334155; /* slate-700 */
+    color: white;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+#description-toolbar button:hover { background: #475569; /* slate-600 */ }
+#description-toolbar input[type="color"] {
+    width: 32px; height: 32px; padding: 4px; border: none; background: transparent; cursor: pointer;
+}
+
+/* Modal styling */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+
+/* Toast notification styling */
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.toast {
+    background-color: #1e293b; /* slate-800 */
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 0.75rem;
+    border-left: 4px solid #0ea5e9; /* sky-500 */
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    opacity: 0;
+    transform: translateX(100%);
+    animation: slideIn 0.5s forwards;
+}
+.toast.error {
+    border-left-color: #ef4444; /* red-500 */
+}
+@keyframes slideIn {
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+@keyframes slideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+
+/* Notification badge on icons */
+.notification-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 18px;
+    height: 18px;
+    background-color: #ef4444; /* red-500 */
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    border-radius: 50%;
+    border: 2px solid #1f2937; /* slate-800 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.dark .notification-badge {
+     border-color: #f8fafc; /* slate-50 */
+}
+#notifications-dropdown {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* Styles for individual notification items */
+.notification-item {
+    transition: background-color 0.2s ease-in-out;
+}
+.notification-item:hover {
+    background-color: #f1f5f9; /* slate-100 */
+}
+.dark .notification-item:hover {
+    background-color: #334155; /* slate-700 */
+}
+
+/* Style for the delete button */
+.delete-notification-btn {
+    opacity: 0; /* Initially hidden */
+    transition: opacity 0.2s ease-in-out;
+}
+
+/* Show delete button on hover of the notification item */
+.notification-item:hover .delete-notification-btn {
+    opacity: 1;
+}
+
+/* Simple loader animation */
+.loader {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #cbd5e1; /* slate-300 */
+    border-bottom-color: #0ea5e9; /* sky-500 */
+    border-radius: 50%;
+    display: inline-block;
+    box-sizing: border-box;
+    animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Hide spinners from number inputs */
+#freight-charge, #discount-amount {
+    -moz-appearance: textfield; /* Firefox */
+}
+#freight-charge::-webkit-outer-spin-button,
+#freight-charge::-webkit-inner-spin-button,
+#discount-amount::-webkit-outer-spin-button,
+#discount-amount::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Chat UI Styles */
+.chat-messages::-webkit-scrollbar-thumb {
+    background: #cbd5e1; /* slate-300 */
+}
+.dark .chat-messages::-webkit-scrollbar-thumb {
+    background: #475569; /* slate-600 */
+}
+
+/* ADDED: Style for the active chat filter button */
+#hide-offline-btn.active-filter {
+    background-color: #0ea5e9; /* sky-500 */
+    color: white;
+}
+#hide-offline-btn.active-filter:hover {
+    background-color: #0284c7; /* sky-600 */
+}
+
+/* Styles for Minimized Chat Feature */
+.minimized-chat-bar {
+    width: 200px;
+    background-color: #334155; /* slate-700 */
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+}
+.dark .minimized-chat-bar:hover {
+    background-color: #4b5a70;
+}
+.minimized-chat-bar:hover {
+    background-color: #475569; /* slate-600 */
+}
+.minimized-chat-badge {
+    background-color: #ef4444; /* red-500 */
+    color: white;
+    border-radius: 50%;
+    min-width: 20px;
+    height: 20px;
+    font-size: 12px;
+    padding: 2px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+}
+
+/* Prevents wrapping in specific table columns */
+.no-wrap {
+    white-space: nowrap;
+}
+
+.preserve-lines {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.move-handle {
+    cursor: grab;
+}
+
+.move-handle:active {
+    cursor: grabbing;
+}
