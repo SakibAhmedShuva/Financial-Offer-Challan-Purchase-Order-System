@@ -260,7 +260,16 @@ function initializeOfferModule(deps) {
 
 
     // --- RENDER FUNCTIONS ---
-    
+    const checkAdminToolsVisibility = () => {
+        if (currentUser.role !== 'admin' || !adminToolsDiv) return;
+
+        const needsAttention = offerItems.some(item => 
+            item.isCustom && item.isCustom['installation_price_bdt']
+        );
+
+        adminToolsDiv.classList.toggle('hidden', !needsAttention);
+    };
+
     const updateInWordsSummary = async (usd, bdt) => {
         const wordsUsdEl = document.getElementById('summary-words-usd');
         const wordsBdtEl = document.getElementById('summary-words-bdt');
@@ -770,7 +779,6 @@ function initializeOfferModule(deps) {
         offerItems.forEach((item, index) => {
             const row = document.createElement('tr');
             row.dataset.itemIndex = index;
-            row.draggable = true;
             
             let rowClasses = "border-t border-slate-200 dark:border-slate-700";
             if (item.source_type !== 'foreign' && currentSortOrder !== 'source_foreign') {
@@ -782,7 +790,7 @@ function initializeOfferModule(deps) {
             row.className = rowClasses;
 
             let rowHTML = `
-                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle" draggable="true"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
                 <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
@@ -795,7 +803,7 @@ function initializeOfferModule(deps) {
                     const locale = h.currency === 'USD' ? 'en-US' : 'en-BD';
                     const formattedTotal = totalValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-                    const isModifiedPrice = !!item.isCustom;
+                    const isModifiedPrice = typeof item.isCustom === 'object' && item.isCustom !== null && item.isCustom[h.price_key];
                     let priceCellClass = '';
                     let showSaveBtn = false;
 
@@ -844,6 +852,7 @@ function initializeOfferModule(deps) {
         });
         updateFinancialSummary();
         renderFinancialSummaryUI();
+        checkAdminToolsVisibility();
     };
 
     const renderOfferCategoryCheckboxes = (savedCategories = null) => {
@@ -852,7 +861,7 @@ function initializeOfferModule(deps) {
         if (offerCategoryCheckboxes) {
             offerCategoryCheckboxes.innerHTML = allCategories.map(cat => {
                 const checked = categoriesToRender.includes(cat) ? 'checked' : '';
-                return `<div class="flex items-center"><input id="cat-${cat}" type="checkbox" value="${cat}" name="category" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" ${checked}><label for="cat-${cat}" class="ml-3 block text-sm text-slate-900 dark:text-slate-300">${cat}</label></div>`;
+                return `<div class="flex items-center"><input id="cat-${cat}" type="checkbox" value="${cat}" name="category" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" ${checked}><label for="cat-${cat}" class="ml-3 block text-sm text-slate-700 dark:text-slate-300">${cat}</label></div>`;
             }).join('');
         }
     };
@@ -1435,7 +1444,7 @@ function initializeOfferModule(deps) {
                 local_supply_total_bdt: '0.00',
                 installation_price_bdt: '0.00',
                 installation_total_bdt: '0.00',
-                isCustom: true,
+                isCustom: {},
                 source_type: 'local', 
                 product_type: 'FPS'
             };
@@ -1624,7 +1633,7 @@ function initializeOfferModule(deps) {
                 local_supply_price_bdt: item.source_type === 'local' ? item.offer_price : 0.00,
                 installation_price_bdt: item.installation || 0.00,
                 po_price_usd: item.po_price || 0.00,
-                isCustom: false // Items from search are not custom initially
+                isCustom: false
             };
             newItem.foreign_total_usd = (newItem.qty * parseFloat(newItem.foreign_price_usd)).toFixed(2);
             newItem.local_supply_total_bdt = (newItem.qty * parseFloat(newItem.local_supply_price_bdt)).toFixed(2);
@@ -1701,11 +1710,13 @@ function initializeOfferModule(deps) {
             if (field === 'description') {
                 handleDescriptionInput(e);
                 item[field] = target.innerHTML;
-                item.isCustom = true;
             } else {
                 item[field] = target.matches('[contenteditable]') ? target.textContent : target.value;
                 if (field.includes('price')) {
-                    item.isCustom = true;
+                    if (typeof item.isCustom !== 'object' || item.isCustom === null) {
+                        item.isCustom = {};
+                    }
+                    item.isCustom[field] = true;
                 }
             }
             
@@ -1724,7 +1735,6 @@ function initializeOfferModule(deps) {
             updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
             if (visibleColumns.po_price) updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
             
-            // Re-render the price cell itself to apply styles if needed
             if(field.includes('price')) {
                 renderOfferTable();
             }
@@ -1766,7 +1776,9 @@ function initializeOfferModule(deps) {
                 const result = await response.json();
                 showToast(result.message, !result.success);
                 if (result.success) {
-                    offerItems[itemIndex].isCustom = false;
+                    if (typeof offerItems[itemIndex].isCustom === 'object') {
+                        delete offerItems[itemIndex].isCustom[itemData.priceType + '_bdt'];
+                    }
                     renderOfferTable();
                     captureState();
                 } else {
@@ -1784,7 +1796,7 @@ function initializeOfferModule(deps) {
                 foreign_price_usd: '0.00', foreign_total_usd: '0.00',
                 local_supply_price_bdt: '0.00', local_supply_total_bdt: '0.00',
                 installation_price_bdt: '0.00', installation_total_bdt: '0.00',
-                isCustom: true, source_type: 'local', product_type: 'MISC'
+                isCustom: {}, source_type: 'local', product_type: 'MISC'
             };
             offerItems.splice(itemIndex + 1, 0, newItem);
         }
@@ -1799,11 +1811,12 @@ function initializeOfferModule(deps) {
 
     // Drag and Drop Listeners
     offerTableBody.addEventListener('dragstart', (e) => {
-        const row = e.target.closest('tr');
-        if (row && e.target.closest('.move-handle')) {
+        const handle = e.target.closest('.move-handle');
+        if (handle) {
+            const row = handle.closest('tr');
             draggedItemIndex = parseInt(row.dataset.itemIndex, 10);
             e.dataTransfer.effectAllowed = 'move';
-            e.target.closest('tr').classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
+            row.classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
         } else {
             e.preventDefault();
         }
@@ -2099,8 +2112,8 @@ function initializeOfferModule(deps) {
         }
     };
 
-    if (currentUser.role === 'admin' && adminToolsDiv) {
-        adminToolsDiv.classList.remove('hidden');
+    if (adminToolsDiv) {
+        adminToolsDiv.classList.add('hidden');
     }
 
     setupColumnsDropdown();
