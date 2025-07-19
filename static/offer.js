@@ -14,6 +14,7 @@ function initializeOfferModule(deps) {
     let activeDescriptionCell = null;
     let activeScrollListener = null;
     let activeKeydownHandler = null;
+    let draggedItemIndex = null; // For drag and drop
 
     const getDefaultFinancialLabels = () => ({
         foreignPrice: 'Foreign Price',
@@ -741,6 +742,7 @@ function initializeOfferModule(deps) {
             row.appendChild(th);
         };
         
+        addHeader(headerRow1, '<i class="fas fa-grip-vertical text-slate-400"></i>', { rowSpan: 2 });
         addHeader(headerRow1, 'SL NO', { rowSpan: 2 });
         addHeader(headerRow1, 'DESCRIPTION', { rowSpan: 2, className: 'w-1/3' });
         addHeader(headerRow1, 'QTY', { rowSpan: 2 });
@@ -768,6 +770,7 @@ function initializeOfferModule(deps) {
         offerItems.forEach((item, index) => {
             const row = document.createElement('tr');
             row.dataset.itemIndex = index;
+            row.draggable = true;
             
             let rowClasses = "border-t border-slate-200 dark:border-slate-700";
             if (item.source_type !== 'foreign' && currentSortOrder !== 'source_foreign') {
@@ -779,6 +782,7 @@ function initializeOfferModule(deps) {
             row.className = rowClasses;
 
             let rowHTML = `
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle"><i class="fas fa-grip-vertical text-slate-400"></i></td>
                 <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
@@ -786,15 +790,26 @@ function initializeOfferModule(deps) {
 
             priceHeaders.forEach(h => {
                 if(h.is_visible) {
-                    const isCustomPrice = item.isCustom && parseFloat(item[h.price_key] || 0) > 0;
-                    const priceCellClass = (currentUser.role === 'admin' && isCustomPrice) ? 'text-red-500 font-bold' : '';
-                    const unitPrice = parseFloat(item[h.price_key] || 0).toFixed(2);
+                    const unitPrice = parseFloat(item[h.price_key] || 0);
+                    const totalValue = parseFloat(item[h.total_key] || 0);
+                    
+                    const locale = h.currency === 'USD' ? 'en-US' : 'en-BD';
+                    const formattedTotal = totalValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                    let showSaveBtn = false;
+                    if (currentUser.role === 'admin' && unitPrice > 0 && item.item_code) {
+                        if (h.key === 'installation_price') {
+                            showSaveBtn = true;
+                        } else if (item.isCustom) {
+                            showSaveBtn = true;
+                        }
+                    }
             
-                    const saveBtnHtml = (currentUser.role === 'admin' && isCustomPrice)
+                    const saveBtnHtml = showSaveBtn
                         ? `<button class="save-price-to-master-btn text-xs text-green-500 hover:text-green-700 p-0.5 ml-1" title="Save this price to master list"
-                                   data-item-code="${item.item_code || ''}"
+                                   data-item-code="${item.item_code}"
                                    data-price-type="${h.key}"
-                                   data-price-value="${unitPrice}"
+                                   data-price-value="${unitPrice.toFixed(2)}"
                                    data-description="${htmlToText(item.description)}"
                                    data-unit="${item.unit || 'Pcs'}"
                                    data-product-type="${item.product_type || 'MISC'}"
@@ -803,8 +818,8 @@ function initializeOfferModule(deps) {
                         : '';
 
                     rowHTML += `
-                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right ${priceCellClass}" contenteditable="true" data-field="${h.price_key}">${unitPrice}${saveBtnHtml}</td>
-                        <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${item[h.total_key] || '0.00'}</td>`;
+                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right" contenteditable="true" data-field="${h.price_key}">${unitPrice.toFixed(2)}${saveBtnHtml}</td>
+                        <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${formattedTotal}</td>`;
                 }
             });
 
@@ -820,8 +835,6 @@ function initializeOfferModule(deps) {
                 </td>
                 <td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-1">
                     <button class="add-row-after-btn text-slate-400 hover:text-green-500 p-1" title="Add Row After"><i class="fas fa-plus-circle"></i></button>
-                    <button class="move-item-up-btn text-slate-400 hover:text-blue-500 p-1" title="Move Up"><i class="fas fa-arrow-up"></i></button>
-                    <button class="move-item-down-btn text-slate-400 hover:text-blue-500 p-1" title="Move Down"><i class="fas fa-arrow-down"></i></button>
                     <button class="remove-item-btn text-slate-400 hover:text-red-500 p-1" title="Remove Item"><i class="fas fa-trash"></i></button>
                 </td>`;
             row.innerHTML = rowHTML;
@@ -891,13 +904,13 @@ function initializeOfferModule(deps) {
         const grandtotal_local = subtotal_local + delivery + vat + ait - discount_local;
         const grandtotal_installation = subtotal_installation - discount_installation;
         
-        document.getElementById('subtotal-foreign').textContent = subtotal_foreign.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-        document.getElementById('subtotal-local').textContent = subtotal_local.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
-        document.getElementById('subtotal-installation').textContent = subtotal_installation.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
+        document.getElementById('subtotal-foreign').textContent = subtotal_foreign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('subtotal-local').textContent = subtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('subtotal-installation').textContent = subtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-        document.getElementById('grandtotal-foreign').textContent = grandtotal_foreign.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-        document.getElementById('grandtotal-local').textContent = grandtotal_local.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
-        document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { style: 'currency', currency: 'BDT' });
+        document.getElementById('grandtotal-foreign').textContent = grandtotal_foreign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('grandtotal-local').textContent = grandtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
         renderFinancialSummaryUI();
     };
@@ -1704,14 +1717,14 @@ function initializeOfferModule(deps) {
             item.installation_total_bdt = (qty * parseFloat(item.installation_price_bdt || 0)).toFixed(2);
             if (visibleColumns.po_price) item.po_total_usd = (qty * parseFloat(item.po_price_usd || 0)).toFixed(2);
 
-            const updateTotalCell = (totalField, value) => {
+            const updateTotalCell = (totalField, value, currency) => {
                 const cell = row.querySelector(`[data-field="${totalField}"]`);
-                if (cell) cell.textContent = value;
+                if (cell) cell.textContent = parseFloat(value).toLocaleString(currency === 'USD' ? 'en-US' : 'en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             };
-            updateTotalCell('foreign_total_usd', item.foreign_total_usd);
-            updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt);
-            updateTotalCell('installation_total_bdt', item.installation_total_bdt);
-            if (visibleColumns.po_price) updateTotalCell('po_total_usd', item.po_total_usd);
+            updateTotalCell('foreign_total_usd', item.foreign_total_usd, 'USD');
+            updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt, 'BDT');
+            updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
+            if (visibleColumns.po_price) updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
             updateFinancialSummary(); 
             if(field === 'product_type') {
                 renderFinancialSummaryUI();
@@ -1789,6 +1802,57 @@ function initializeOfferModule(deps) {
             captureState();
         }
     });
+
+    // Drag and Drop Listeners
+    offerTableBody.addEventListener('dragstart', (e) => {
+        const row = e.target.closest('tr');
+        if (row && e.target.closest('.move-handle')) {
+            draggedItemIndex = parseInt(row.dataset.itemIndex, 10);
+            e.dataTransfer.effectAllowed = 'move';
+            // Add a visual indicator
+            e.target.closest('tr').classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
+        } else {
+            e.preventDefault();
+        }
+    });
+
+    offerTableBody.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const targetRow = e.target.closest('tr');
+        if (targetRow && parseInt(targetRow.dataset.itemIndex, 10) !== draggedItemIndex) {
+            // Optional: add a class to the target row for visual feedback
+            // targetRow.classList.add('drag-over-target');
+        }
+    });
+
+    offerTableBody.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetRow = e.target.closest('tr');
+        if (targetRow && draggedItemIndex !== null) {
+            const targetIndex = parseInt(targetRow.dataset.itemIndex, 10);
+
+            // Reorder the offerItems array
+            const [draggedItem] = offerItems.splice(draggedItemIndex, 1);
+            offerItems.splice(targetIndex, 0, draggedItem);
+            
+            // Set sort order to custom and re-render
+            currentSortOrder = 'custom';
+            setupSortDropdown();
+            renderOfferTable();
+            captureState();
+        }
+        draggedItemIndex = null;
+    });
+
+    offerTableBody.addEventListener('dragend', (e) => {
+        // Clean up visual indicator from the dragged row
+        const draggedRow = offerTableBody.querySelector('.bg-yellow-200');
+        if (draggedRow) {
+            draggedRow.classList.remove('bg-yellow-200', 'dark:bg-yellow-800/50');
+        }
+        draggedItemIndex = null;
+    });
+
     
     if (autoFillBtn) {
         autoFillBtn.addEventListener('click', async () => {
