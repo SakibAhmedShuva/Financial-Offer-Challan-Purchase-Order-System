@@ -425,6 +425,14 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         financial_labels['subtotalForeign'] = 'Subtotal:'
         financial_labels['grandtotalForeign'] = 'Grand Total, Ex-Works (USD):'
 
+    # MODIFICATION: Calculate end column for title merge
+    visible_count = sum([is_foreign_visible, is_local_visible, is_install_visible])
+    end_col = 6  # Default for 1 section (F)
+    if visible_count == 2:
+        end_col = 8  # H
+    elif visible_count >= 3:
+        end_col = 10 # J
+
     if is_summary_enabled:
         ws = wb.active
         ws.title = "Financial Summary"
@@ -588,8 +596,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         boq_ws = wb.create_sheet("Bill of Quantities")
         
         boq_title_cell = boq_ws.cell(row=1, column=1, value="Bill of Quantities")
-        # REVISED: Merge title up to column F (6)
-        boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+        # REVISED: Merge title based on visible columns
+        boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
         boq_title_cell.font = Font(name='Calibri', size=16, bold=True)
         boq_title_cell.fill = header_fill
         boq_title_cell.alignment = center_align_wrap
@@ -602,8 +610,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         ws.title = "Financial Offer"
         
         title_cell = ws.cell(row=1, column=1, value="Financial Offer")
-        # REVISED: Merge title up to column F (6)
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+        # REVISED: Merge title based on visible columns
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
         title_cell.font = Font(name='Calibri', size=16, bold=True)
         title_cell.fill = header_fill
         title_cell.alignment = center_align_wrap
