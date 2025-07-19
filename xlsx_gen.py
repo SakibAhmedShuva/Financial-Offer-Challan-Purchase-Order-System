@@ -243,6 +243,9 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if is_grand_total:
                  cell.fill = header_fill
 
+    # -- START OF FIX --
+    # First, add all the intermediate financial rows to the worksheet.
+    # This populates the summary_cell_coords dictionary.
     if has_additional_charges:
         add_financial_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotals, is_bold=True)
         
@@ -268,8 +271,11 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 'installation_price': -discount_install if discount_install > 0 else None
             }
             add_financial_row("Discount:", {k: v for k, v in discount_values.items() if v is not None}, is_red=True, is_bold=True)
-    
-    # Grand Total Formula Logic
+    else:
+        # If no charges, the subtotal is the only line before the grand total.
+        add_financial_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotals, is_bold=True)
+
+    # Second, now that all component rows exist, calculate the Grand Total formula.
     grand_totals = {}
     for section in visible_price_sections:
         key = section['key']
@@ -279,12 +285,15 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
         subtotal_coord = summary_cell_coords.get((subtotal_label, key))
         if subtotal_coord:
             formula_parts.append(subtotal_coord)
-        
+        else:
+            # Fallback if no subtotal row was added (e.g., no items)
+            formula_parts.append(f"({subtotals.get(key, '0')})")
+
         if key == 'foreign':
             freight_coord = summary_cell_coords.get((financial_labels.get('freight', 'Freight:'), key))
             discount_coord = summary_cell_coords.get(("Discount:", key))
             if freight_coord: formula_parts.append(f"+{freight_coord}")
-            if discount_coord: formula_parts.append(f"+{discount_coord}") # Discount is already negative
+            if discount_coord: formula_parts.append(f"{discount_coord}") # Discount is already negative, so we add it.
         
         if key == 'local_supply_price':
             delivery_coord = summary_cell_coords.get((financial_labels.get('delivery', 'Delivery:'), key))
@@ -294,11 +303,11 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if delivery_coord: formula_parts.append(f"+{delivery_coord}")
             if vat_coord: formula_parts.append(f"+{vat_coord}")
             if ait_coord: formula_parts.append(f"+{ait_coord}")
-            if discount_coord: formula_parts.append(f"+{discount_coord}")
+            if discount_coord: formula_parts.append(f"{discount_coord}")
         
         if key == 'installation_price':
             discount_coord = summary_cell_coords.get(("Discount:", key))
-            # If local supply is hidden, delivery/vat/ait might apply here
+            visible_section_keys = [s['key'] for s in visible_price_sections]
             if not 'local_supply_price' in visible_section_keys:
                 delivery_coord = summary_cell_coords.get((financial_labels.get('delivery', 'Delivery:'), key))
                 vat_coord = summary_cell_coords.get((financial_labels.get('vat', 'VAT:'), key))
@@ -306,16 +315,13 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 if delivery_coord: formula_parts.append(f"+{delivery_coord}")
                 if vat_coord: formula_parts.append(f"+{vat_coord}")
                 if ait_coord: formula_parts.append(f"+{ait_coord}")
-            if discount_coord: formula_parts.append(f"+{discount_coord}")
+            if discount_coord: formula_parts.append(f"{discount_coord}")
 
-        if not formula_parts:
-            # If no additional charges, grand total is just the subtotal
-            grand_totals[key] = subtotals.get(key, 0)
-        else:
-            grand_totals[key] = f"={ ''.join(formula_parts) }"
+        grand_totals[key] = f"={ ''.join(formula_parts) }"
 
+    # Finally, add the Grand Total row using the correctly constructed formulas.
     add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
-
+    # -- END OF FIX --
 
 def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
     user_info, items = data.get('user', {}), data.get('items', [])
@@ -641,8 +647,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             current_row_idx += 1
             ws.cell(current_row_idx, 1, value="Important Note:").font = bold_font
             ws.cell(current_row_idx, 1).fill = header_fill
-            ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
-            ws.cell(current_row_idx, 1).alignment = center_align_wrap
+            ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=ws.max_column)
+            ws.cell(current_row_idx, 1).alignment = Alignment(horizontal='center', vertical='center')
             
             current_row_idx += 1
             note_text = (f"Freight Charge (USD {freight:,.2f}) has been considered in light of the current market trending price, "
