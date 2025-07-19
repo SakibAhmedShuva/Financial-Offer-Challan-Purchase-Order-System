@@ -22,6 +22,11 @@ function initializeOfferModule(deps) {
         freight: 'Freight:',
         discountForeign: 'Discount:',
         grandtotalForeign: 'Grand Total, Ex-Works (USD):',
+        poPrice: 'PO Price',
+        subtotalPO: 'Subtotal:',
+        freightPO: 'Freight:',
+        discountPO: 'Discount:',
+        grandtotalPO: 'Grand Total (USD):',
         localPrice: 'Local Supply Price',
         subtotalLocal: 'Subtotal:',
         delivery: 'Delivery:',
@@ -40,16 +45,20 @@ function initializeOfferModule(deps) {
     let financials = { 
         freight_foreign_usd: 0, 
         discount_foreign_usd: 0,
+        freight_po_usd: 0,
+        discount_po_usd: 0,
         delivery_local_bdt: 0, 
         vat_local_bdt: 0,
         ait_local_bdt: 0,
         discount_local_bdt: 0,
         discount_installation_bdt: 0,
         use_freight: false,
+        use_discount_foreign: false,
+        use_freight_po: false,
+        use_discount_po: false,
         use_delivery: false,
         use_vat: false,
         use_ait: false,
-        use_discount_foreign: false,
         use_discount_local: false,
         use_discount_installation: false,
         vat_is_percentage: true,
@@ -100,6 +109,7 @@ function initializeOfferModule(deps) {
     const searchForeignCheckbox = document.getElementById('search-foreign');
     const searchLocalCheckbox = document.getElementById('search-local');
     const foreignSummaryBlock = document.getElementById('foreign-summary');
+    const poSummaryBlock = document.getElementById('po-summary');
     const localSummaryBlock = document.getElementById('local-summary');
     const installationSummaryBlock = document.getElementById('installation-summary');
     const adminToolsDiv = document.getElementById('admin-offer-tools');
@@ -802,6 +812,7 @@ function initializeOfferModule(deps) {
                     const totalValue = parseFloat(item[h.total_key] || 0);
                     const locale = h.currency === 'USD' ? 'en-US' : 'en-BD';
                     const formattedTotal = totalValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const formattedUnitPrice = unitPrice.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
                     const isModifiedPrice = typeof item.isCustom === 'object' && item.isCustom !== null && item.isCustom[h.price_key];
                     let priceCellClass = '';
@@ -828,7 +839,7 @@ function initializeOfferModule(deps) {
                         : '';
 
                     rowHTML += `
-                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right ${priceCellClass}" contenteditable="true" data-field="${h.price_key}">${unitPrice.toFixed(2)}${saveBtnHtml}</td>
+                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right ${priceCellClass}" contenteditable="true" data-field="${h.price_key}">${formattedUnitPrice}${saveBtnHtml}</td>
                         <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${formattedTotal}</td>`;
                 }
             });
@@ -868,6 +879,7 @@ function initializeOfferModule(deps) {
 
     const updateFinancialSummary = () => {
         foreignSummaryBlock.style.display = visibleColumns.foreign_price ? 'block' : 'none';
+        poSummaryBlock.style.display = visibleColumns.po_price ? 'block' : 'none';
         localSummaryBlock.style.display = visibleColumns.local_supply_price ? 'block' : 'none';
         installationSummaryBlock.style.display = visibleColumns.installation_price ? 'block' : 'none';
 
@@ -883,10 +895,12 @@ function initializeOfferModule(deps) {
         updateFinancialLabelsInDOM();
 
         const subtotal_foreign = offerItems.reduce((acc, item) => acc + parseFloat(item.foreign_total_usd || 0), 0);
+        const subtotal_po = offerItems.reduce((acc, item) => acc + parseFloat(item.po_total_usd || 0), 0);
         const subtotal_local = offerItems.reduce((acc, item) => acc + parseFloat(item.local_supply_total_bdt || 0), 0);
         const subtotal_installation = offerItems.reduce((acc, item) => acc + parseFloat(item.installation_total_bdt || 0), 0);
 
         const freight = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
+        const freight_po = financials.use_freight_po ? parseFloat(financials.freight_po_usd || 0) : 0;
         const delivery = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
         
         if (financials.use_vat && financials.vat_is_percentage) {
@@ -904,18 +918,22 @@ function initializeOfferModule(deps) {
         const ait = financials.use_ait ? parseFloat(financials.ait_local_bdt || 0) : 0;
         
         const discount_foreign = financials.use_discount_foreign ? parseFloat(financials.discount_foreign_usd || 0) : 0;
+        const discount_po = financials.use_discount_po ? parseFloat(financials.discount_po_usd || 0) : 0;
         const discount_local = financials.use_discount_local ? parseFloat(financials.discount_local_bdt || 0) : 0;
         const discount_installation = financials.use_discount_installation ? parseFloat(financials.discount_installation_bdt || 0) : 0;
 
         const grandtotal_foreign = subtotal_foreign + freight - discount_foreign;
+        const grandtotal_po = subtotal_po + freight_po - discount_po;
         const grandtotal_local = subtotal_local + delivery + vat + ait - discount_local;
         const grandtotal_installation = subtotal_installation - discount_installation;
         
         document.getElementById('subtotal-foreign').textContent = subtotal_foreign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('subtotal-po').textContent = subtotal_po.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('subtotal-local').textContent = subtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('subtotal-installation').textContent = subtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         document.getElementById('grandtotal-foreign').textContent = grandtotal_foreign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        document.getElementById('grandtotal-po').textContent = grandtotal_po.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-local').textContent = grandtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
@@ -934,16 +952,20 @@ function initializeOfferModule(deps) {
         financials = { 
             freight_foreign_usd: 0, 
             discount_foreign_usd: 0,
+            freight_po_usd: 0,
+            discount_po_usd: 0,
             delivery_local_bdt: 0, 
             vat_local_bdt: 0,
             ait_local_bdt: 0,
             discount_local_bdt: 0,
             discount_installation_bdt: 0,
             use_freight: false,
+            use_discount_foreign: false,
+            use_freight_po: false,
+            use_discount_po: false,
             use_delivery: false,
             use_vat: false,
             use_ait: false,
-            use_discount_foreign: false,
             use_discount_local: false,
             use_discount_installation: false,
             vat_is_percentage: true,
@@ -1512,16 +1534,19 @@ function initializeOfferModule(deps) {
     const setupFinancialsUI = () => {
         const allToggles = [
             { useKey: 'use_freight', type: 'freight' },
+            { useKey: 'use_discount_foreign', type: 'discount_foreign' },
+            { useKey: 'use_freight_po', type: 'freight_po' },
+            { useKey: 'use_discount_po', type: 'discount_po' },
             { useKey: 'use_delivery', type: 'delivery' },
             { useKey: 'use_vat', type: 'vat' },
             { useKey: 'use_ait', type: 'ait' },
-            { useKey: 'use_discount_foreign', type: 'discount_foreign' },
             { useKey: 'use_discount_local', type: 'discount_local' },
             { useKey: 'use_discount_installation', type: 'discount_installation' }
         ];
 
         allToggles.forEach(({ useKey, type }) => {
             const addBtn = financialsSection.querySelector(`.add-charge-btn[data-type="${type}"]`);
+            if (!addBtn) return; 
             const removeBtn = financialsSection.querySelector(`.remove-charge-btn[data-type="${type}"]`);
             const input = addBtn.closest('.flex').querySelector('.financial-input');
             
@@ -1704,14 +1729,20 @@ function initializeOfferModule(deps) {
         const row = target.closest('tr'); if (!row) return;
         const itemIndex = parseInt(row.dataset.itemIndex, 10);
         const item = offerItems[itemIndex]; if (!item) return;
-
+    
         const field = target.dataset.field;
         if (field) {
             if (field === 'description') {
                 handleDescriptionInput(e);
                 item[field] = target.innerHTML;
             } else {
-                item[field] = target.matches('[contenteditable]') ? target.textContent : target.value;
+                const rawValue = target.matches('[contenteditable]') ? target.textContent : target.value;
+                if (field.includes('price')) {
+                    item[field] = rawValue.replace(/,/g, '');
+                } else {
+                    item[field] = rawValue;
+                }
+    
                 if (field.includes('price')) {
                     if (typeof item.isCustom !== 'object' || item.isCustom === null) {
                         item.isCustom = {};
@@ -1721,11 +1752,12 @@ function initializeOfferModule(deps) {
             }
             
             const qty = parseFloat(item.qty || 1);
+            // FIX: Ensure all totals are recalculated unconditionally
             item.foreign_total_usd = (qty * parseFloat(item.foreign_price_usd || 0)).toFixed(2);
             item.local_supply_total_bdt = (qty * parseFloat(item.local_supply_price_bdt || 0)).toFixed(2);
             item.installation_total_bdt = (qty * parseFloat(item.installation_price_bdt || 0)).toFixed(2);
-            if (visibleColumns.po_price) item.po_total_usd = (qty * parseFloat(item.po_price_usd || 0)).toFixed(2);
-
+            item.po_total_usd = (qty * parseFloat(item.po_price_usd || 0)).toFixed(2);
+    
             const updateTotalCell = (totalField, value, currency) => {
                 const cell = row.querySelector(`[data-field="${totalField}"]`);
                 if (cell) cell.textContent = parseFloat(value).toLocaleString(currency === 'USD' ? 'en-US' : 'en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1733,12 +1765,45 @@ function initializeOfferModule(deps) {
             updateTotalCell('foreign_total_usd', item.foreign_total_usd, 'USD');
             updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt, 'BDT');
             updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
-            if (visibleColumns.po_price) updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
+            // FIX: Update the cell if it exists
+            updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
             
             if(field.includes('price')) {
+                const mainScroller = document.querySelector('main');
+                const scrollPos = mainScroller.scrollTop;
+                
+                let selection = window.getSelection();
+                let cursorPosition = 0;
+                if (selection.rangeCount > 0) {
+                    let range = selection.getRangeAt(0);
+                    cursorPosition = range.startOffset;
+                }
+                
                 renderOfferTable();
+    
+                mainScroller.scrollTo({ top: scrollPos, behavior: 'instant' });
+                const newRow = offerTableBody.querySelector(`tr[data-item-index="${itemIndex}"]`);
+                if (newRow) {
+                    const newTarget = newRow.querySelector(`[data-field="${field}"]`);
+                    if (newTarget) {
+                        newTarget.focus();
+                        try {
+                            let newRange = document.createRange();
+                            let newSelection = window.getSelection();
+                            if (newTarget.childNodes.length > 0) {
+                                let newCursorPosition = Math.min(cursorPosition, newTarget.childNodes[0].length);
+                                newRange.setStart(newTarget.childNodes[0], newCursorPosition);
+                                newRange.collapse(true);
+                                newSelection.removeAllRanges();
+                                newSelection.addRange(newRange);
+                            }
+                        } catch (err) {
+                            console.warn("Could not restore cursor position.", err);
+                        }
+                    }
+                }
             }
-
+    
             updateFinancialSummary(); 
             if(field === 'product_type') {
                 renderFinancialSummaryUI();
@@ -2003,16 +2068,20 @@ function initializeOfferModule(deps) {
         const defaultFinancials = { 
             freight_foreign_usd: 0, 
             discount_foreign_usd: 0,
+            freight_po_usd: 0,
+            discount_po_usd: 0,
             delivery_local_bdt: 0, 
             vat_local_bdt: 0,
             ait_local_bdt: 0,
             discount_local_bdt: 0,
             discount_installation_bdt: 0,
             use_freight: false,
+            use_discount_foreign: false,
+            use_freight_po: false,
+            use_discount_po: false,
             use_delivery: false,
             use_vat: false,
             use_ait: false,
-            use_discount_foreign: false,
             use_discount_local: false,
             use_discount_installation: false,
             vat_is_percentage: true,
