@@ -751,6 +751,7 @@ function initializeOfferModule(deps) {
             row.appendChild(th);
         };
         
+        addHeader(headerRow1, '<i class="fas fa-grip-vertical text-slate-400"></i>', { rowSpan: 2 });
         addHeader(headerRow1, 'SL NO', { rowSpan: 2 });
         addHeader(headerRow1, 'DESCRIPTION', { rowSpan: 2, className: 'w-1/3' });
         addHeader(headerRow1, 'QTY', { rowSpan: 2 });
@@ -788,10 +789,8 @@ function initializeOfferModule(deps) {
             }
             row.className = rowClasses;
 
-            row.setAttribute('draggable', 'true');
-            row.classList.add('move-handle');
-
             let rowHTML = `
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle" draggable="true"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
                 <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
