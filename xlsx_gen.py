@@ -277,9 +277,7 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             }
             add_financial_row("Discount:", {k: v for k, v in discount_values.items() if v is not None}, is_red=True, is_bold=True)
     
-    grand_total_bdt = grand_total_local_supply + grand_total_install
-    final_totals = {'foreign': grand_total_foreign, 'local_supply_price': grand_total_bdt}
-    add_financial_row(grand_total_label, final_totals, is_grand_total=True)
+    add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
 
 
 def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
@@ -425,13 +423,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         financial_labels['subtotalForeign'] = 'Subtotal:'
         financial_labels['grandtotalForeign'] = 'Grand Total, Ex-Works (USD):'
 
-    # MODIFICATION: Calculate end column for title merge
-    visible_count = sum([is_foreign_visible, is_local_visible, is_install_visible])
-    end_col = 6  # Default for 1 section (F)
-    if visible_count == 2:
-        end_col = 8  # H
-    elif visible_count >= 3:
-        end_col = 10 # J
+    visible_count = sum([visible_columns.get(key) for key in ['foreign_price', 'local_supply_price', 'installation_price', 'po_price'] if visible_columns.get(key)])
+    end_col = 4 + (visible_count * 2)
 
     if is_summary_enabled:
         ws = wb.active
@@ -488,7 +481,19 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         sub_total_usd = sum(scope['total_usd'] for scope in summary_scopes.values())
         sub_total_bdt = sum(scope['total_bdt'] for scope in summary_scopes.values())
         
-        sorted_scopes = sorted(summary_scopes.items())
+        # --- SORTING FIX START ---
+        scope_order = ['foreign', 'localsupply', 'installation']
+        def sort_key(item):
+            key_parts = item[0].split('-')
+            if len(key_parts) == 2:
+                scope_type, sub_type = key_parts
+                if sub_type in scope_order:
+                    return (scope_order.index(sub_type), scope_type)
+            return (len(scope_order), item[0])
+
+        sorted_scopes = sorted(summary_scopes.items(), key=sort_key)
+        # --- SORTING FIX END ---
+
         current_row_idx = 12
         for i, (key, scope) in enumerate(sorted_scopes):
             sl_cell = ws.cell(row=current_row_idx, column=1, value=chr(65 + i))
@@ -557,21 +562,30 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             current_row_idx += 1
 
         current_row_idx += 1
+        
+        # --- "IN WORDS" FIX START ---
         if data.get('has_foreign_part'):
-            ws.cell(row=current_row_idx, column=1, value="In Words (Foreign Part):").font = bold_font
-            ws.cell(row=current_row_idx, column=1).fill = header_fill
-            ws.cell(row=current_row_idx, column=2, value=data.get('words_usd', 'N/A'))
-            ws.merge_cells(start_row=current_row_idx, start_column=2, end_row=current_row_idx, end_column=4)
-            for col_idx in range(1, 5): ws.cell(row=current_row_idx, column=col_idx).border = thin_border
+            in_words_text_usd = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
+            cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_usd)
+            ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
+            cell.font = bold_font
+            cell.fill = header_fill
+            cell.alignment = center_align_wrap
+            for col_idx in range(1, 5): 
+                ws.cell(row=current_row_idx, column=col_idx).border = thin_border
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            ws.cell(row=current_row_idx, column=1, value="In Words (Local Part):").font = bold_font
-            ws.cell(row=current_row_idx, column=1).fill = header_fill
-            ws.cell(row=current_row_idx, column=2, value=data.get('words_bdt', 'N/A'))
-            ws.merge_cells(start_row=current_row_idx, start_column=2, end_row=current_row_idx, end_column=4)
-            for col_idx in range(1, 5): ws.cell(row=current_row_idx, column=col_idx).border = thin_border
+            in_words_text_bdt = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
+            cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_bdt)
+            ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
+            cell.font = bold_font
+            cell.fill = header_fill
+            cell.alignment = center_align_wrap
+            for col_idx in range(1, 5): 
+                ws.cell(row=current_row_idx, column=col_idx).border = thin_border
             current_row_idx += 1
+        # --- "IN WORDS" FIX END ---
         
         if data.get('has_foreign_part') and freight > 0:
             current_row_idx += 1
@@ -596,7 +610,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         boq_ws = wb.create_sheet("Bill of Quantities")
         
         boq_title_cell = boq_ws.cell(row=1, column=1, value="Bill of Quantities")
-        # REVISED: Merge title based on visible columns
         boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
         boq_title_cell.font = Font(name='Calibri', size=16, bold=True)
         boq_title_cell.fill = header_fill
@@ -610,7 +623,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         ws.title = "Financial Offer"
         
         title_cell = ws.cell(row=1, column=1, value="Financial Offer")
-        # REVISED: Merge title based on visible columns
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
         title_cell.font = Font(name='Calibri', size=16, bold=True)
         title_cell.fill = header_fill
@@ -629,14 +641,15 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         
         current_row_idx = ws.max_row + 2
         
-        # REVISED: Combine "In Words" label and value into a single merged cell
         max_col_for_merge = ws.max_column
 
+        # --- "IN WORDS" FIX START ---
         if data.get('has_foreign_part'):
             in_words_text = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
+            cell.alignment = center_align_wrap
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=max_col_for_merge)
             current_row_idx += 1
 
@@ -645,8 +658,10 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
+            cell.alignment = center_align_wrap
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=max_col_for_merge)
             current_row_idx += 1
+        # --- "IN WORDS" FIX END ---
         
         if data.get('has_foreign_part') and freight > 0:
             current_row_idx += 1
