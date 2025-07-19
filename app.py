@@ -1483,41 +1483,43 @@ def update_master_price():
     data = request.json
     admin_email = data.get('adminEmail')
 
-    # Admin role check
     users_df = pd.read_csv(os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE']))
     user_role = users_df[users_df['email'] == admin_email]['role'].iloc[0]
     if user_role != 'admin':
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
 
     item_code = data.get('itemCode')
-    price_type = data.get('priceType') # e.g., 'foreign_price', 'local_supply_price', 'installation_price'
+    price_type = data.get('priceType')
     price_value = safe_float(data.get('priceValue'))
-    source_type = data.get('sourceType') # 'foreign' or 'local'
-    product_type = data.get('productType', 'MISC') # This is the sheet name
+    source_type = data.get('sourceType')
+    product_type = data.get('productType', 'MISC')
 
     if not item_code:
         return jsonify({'success': False, 'message': 'Item Code is required to update the master list.'}), 400
 
-    price_column_map = {
-        'foreign_price': 'offer_price',
-        'po_price': 'po_price',
-        'local_supply_price': 'offer_price',
-        'installation_price': 'installation'
-    }
+    value_to_save = price_value
+    price_column_to_update = None
 
-    if price_type not in price_column_map:
-        return jsonify({'success': False, 'message': f'Invalid price type: {price_type}'}), 400
+    if price_type == 'installation_price':
+        price_column_to_update = 'installation'
+    elif price_type in ['foreign_price', 'local_supply_price']:
+        markup = CONFIG.get('MARKUP', 0.08)
+        value_to_save = price_value / (1 + markup)
+        price_column_to_update = 'po_price'
+    elif price_type == 'po_price':
+        price_column_to_update = 'po_price'
 
-    price_column = price_column_map[price_type]
+    if not price_column_to_update:
+        return jsonify({'success': False, 'message': f'Invalid or unhandled price type: {price_type}'}), 400
 
-    if source_type == 'foreign' or price_type == 'foreign_price':
+    if source_type == 'foreign':
         filepath = CONFIG['PRICE_LIST_FILE']
-    else: # local or installation
+    else: # local
         filepath = CONFIG['LOCAL_PRICE_LIST_FILE']
     
     price_data = {
-        'price_column': price_column,
-        'price_value': price_value,
+        'price_column': price_column_to_update,
+        'price_value': value_to_save,
         'description': data.get('description'),
         'unit': data.get('unit'),
         'product_type': product_type
@@ -1526,8 +1528,7 @@ def update_master_price():
     success, message = update_excel_price(filepath, product_type, item_code, price_data)
 
     if success:
-        log_activity(admin_email, "Master Price Update", f"Updated {item_code} to {price_value}", "N/A")
-        # Re-initialize data to reflect changes in search
+        log_activity(admin_email, "Master Price Update", f"Updated {item_code} to {value_to_save}", "N/A")
         print("Re-initializing data after price update...")
         data_management.initialize_data(CONFIG, force_rebuild=True)
         print("Data re-initialized.")
