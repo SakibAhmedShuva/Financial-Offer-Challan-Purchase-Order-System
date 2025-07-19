@@ -102,7 +102,7 @@
         <p id="table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the offer.</p>
         
         <div id="financials-section" class="mt-6 hidden">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div id="foreign-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
                     <h4 id="foreign-price-label" contenteditable="true" data-label-key="foreignPrice" class="font-bold text-lg mb-2">Foreign Price</h4>
                     <div class="space-y-2 text-sm">
@@ -181,6 +181,30 @@
                         </div>
                         <hr class="dark:border-slate-600 my-1">
                         <div class="flex justify-between font-bold text-base"><span id="grandtotal-installation-label" contenteditable="true" data-label-key="grandtotalInstallation">Grand Total (BDT):</span> <span id="grandtotal-installation"></span></div>
+                    </div>
+                </div>
+                <div id="po-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
+                    <h4 id="po-price-label" contenteditable="true" data-label-key="poPrice" class="font-bold text-lg mb-2">PO Price</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span id="subtotal-po-label" contenteditable="true" data-label-key="subtotalPO">Subtotal:</span> <span id="subtotal-po" class="font-medium"></span></div>
+                        <div class="flex justify-between items-center">
+                            <span> 
+                                <span id="freight-po-label" contenteditable="true" data-label-key="freightPO">Freight:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="freight_po">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="freight_po">+</button>
+                            </span>
+                            <input type="number" data-type="freight_po_usd" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                        </div>
+                        <div class="flex justify-between items-center text-red-500 dark:text-red-400 font-semibold">
+                            <span>
+                                <span id="discount-po-label" contenteditable="true" data-label-key="discountPO">Discount:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="discount_po">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="discount_po">+</button>
+                            </span>
+                            <input type="number" data-type="discount_po_usd" class="financial-input w-24 p-1 text-right rounded bg-red-50 dark:bg-red-900/50 border-red-300 hidden" value="0">
+                        </div>
+                        <hr class="dark:border-slate-600 my-1">
+                        <div class="flex justify-between font-bold text-base"><span id="grandtotal-po-label" contenteditable="true" data-label-key="grandtotalPO">Grand Total (USD):</span> <span id="grandtotal-po"></span></div>
                     </div>
                 </div>
             </div>
