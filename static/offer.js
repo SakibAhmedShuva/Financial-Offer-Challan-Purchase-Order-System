@@ -782,7 +782,7 @@ function initializeOfferModule(deps) {
             row.className = rowClasses;
 
             let rowHTML = `
-                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle"><i class="fas fa-grip-vertical text-slate-400"></i></td>
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
                 <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
@@ -792,17 +792,19 @@ function initializeOfferModule(deps) {
                 if(h.is_visible) {
                     const unitPrice = parseFloat(item[h.price_key] || 0);
                     const totalValue = parseFloat(item[h.total_key] || 0);
-                    
                     const locale = h.currency === 'USD' ? 'en-US' : 'en-BD';
                     const formattedTotal = totalValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+                    const isModifiedPrice = !!item.isCustom;
+                    let priceCellClass = '';
                     let showSaveBtn = false;
-                    if (currentUser.role === 'admin' && unitPrice > 0 && item.item_code) {
-                        if (h.key === 'installation_price') {
-                            showSaveBtn = true;
-                        } else if (item.isCustom) {
-                            showSaveBtn = true;
-                        }
+
+                    if (isModifiedPrice && (h.key === 'foreign_price' || h.key === 'installation_price')) {
+                        priceCellClass = 'text-red-500 font-bold';
+                    }
+
+                    if (isModifiedPrice && h.key === 'installation_price' && currentUser.role === 'admin' && unitPrice > 0 && item.item_code) {
+                        showSaveBtn = true;
                     }
             
                     const saveBtnHtml = showSaveBtn
@@ -818,7 +820,7 @@ function initializeOfferModule(deps) {
                         : '';
 
                     rowHTML += `
-                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right" contenteditable="true" data-field="${h.price_key}">${unitPrice.toFixed(2)}${saveBtnHtml}</td>
+                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right ${priceCellClass}" contenteditable="true" data-field="${h.price_key}">${unitPrice.toFixed(2)}${saveBtnHtml}</td>
                         <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${formattedTotal}</td>`;
                 }
             });
@@ -850,18 +852,16 @@ function initializeOfferModule(deps) {
         if (offerCategoryCheckboxes) {
             offerCategoryCheckboxes.innerHTML = allCategories.map(cat => {
                 const checked = categoriesToRender.includes(cat) ? 'checked' : '';
-                return `<div class="flex items-center"><input id="cat-${cat}" type="checkbox" value="${cat}" name="category" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" ${checked}><label for="cat-${cat}" class="ml-3 block text-sm text-slate-700 dark:text-slate-300">${cat}</label></div>`;
+                return `<div class="flex items-center"><input id="cat-${cat}" type="checkbox" value="${cat}" name="category" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" ${checked}><label for="cat-${cat}" class="ml-3 block text-sm text-slate-900 dark:text-slate-300">${cat}</label></div>`;
             }).join('');
         }
     };
 
     const updateFinancialSummary = () => {
-        // REVISED: Toggle visibility of summary blocks based on visible columns
         foreignSummaryBlock.style.display = visibleColumns.foreign_price ? 'block' : 'none';
         localSummaryBlock.style.display = visibleColumns.local_supply_price ? 'block' : 'none';
         installationSummaryBlock.style.display = visibleColumns.installation_price ? 'block' : 'none';
 
-        // REVISED: Condition for freight now also depends on the foreign price column being visible.
         const hasFreight = financials.use_freight && parseFloat(financials.freight_foreign_usd || 0) > 0 && visibleColumns.foreign_price;
 
         if (hasFreight) {
@@ -880,7 +880,6 @@ function initializeOfferModule(deps) {
         const freight = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
         const delivery = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
         
-        // VAT Calculation
         if (financials.use_vat && financials.vat_is_percentage) {
             financials.vat_local_bdt = (subtotal_local * (financials.vat_percentage / 100)).toFixed(2);
             const vatInput = document.querySelector('[data-type="vat_local_bdt"]');
@@ -888,7 +887,6 @@ function initializeOfferModule(deps) {
         }
         const vat = financials.use_vat ? parseFloat(financials.vat_local_bdt || 0) : 0;
 
-        // AIT Calculation
         if (financials.use_ait && financials.ait_is_percentage) {
             financials.ait_local_bdt = (subtotal_local * (financials.ait_percentage / 100)).toFixed(2);
             const aitInput = document.querySelector('[data-type="ait_local_bdt"]');
@@ -1705,7 +1703,7 @@ function initializeOfferModule(deps) {
                 item[field] = target.innerHTML;
                 item.isCustom = true;
             } else {
-                item[field] = target.matches('[contenteditable]') ? target.innerHTML : target.value;
+                item[field] = target.matches('[contenteditable]') ? target.textContent : target.value;
                 if (field.includes('price')) {
                     item.isCustom = true;
                 }
@@ -1725,6 +1723,12 @@ function initializeOfferModule(deps) {
             updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt, 'BDT');
             updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
             if (visibleColumns.po_price) updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
+            
+            // Re-render the price cell itself to apply styles if needed
+            if(field.includes('price')) {
+                renderOfferTable();
+            }
+
             updateFinancialSummary(); 
             if(field === 'product_type') {
                 renderFinancialSummaryUI();
@@ -1765,6 +1769,8 @@ function initializeOfferModule(deps) {
                     offerItems[itemIndex].isCustom = false;
                     renderOfferTable();
                     captureState();
+                } else {
+                     button.innerHTML = '<i class="fas fa-save"></i>';
                 }
             } catch (err) {
                 showToast(`An error occurred: ${err.message}`, true);
@@ -1772,18 +1778,6 @@ function initializeOfferModule(deps) {
             }
         } else if (button.classList.contains('remove-item-btn')) {
             offerItems.splice(itemIndex, 1);
-        } else if (button.classList.contains('move-item-up-btn')) {
-            if (itemIndex > 0) {
-                [offerItems[itemIndex], offerItems[itemIndex - 1]] = [offerItems[itemIndex - 1], offerItems[itemIndex]];
-                currentSortOrder = 'custom';
-                setupSortDropdown();
-            }
-        } else if (button.classList.contains('move-item-down-btn')) {
-            if (itemIndex < offerItems.length - 1) {
-                [offerItems[itemIndex], offerItems[itemIndex + 1]] = [offerItems[itemIndex + 1], offerItems[itemIndex]];
-                currentSortOrder = 'custom';
-                setupSortDropdown();
-            }
         } else if (button.classList.contains('add-row-after-btn')) {
             const newItem = {
                 customId: `custom_${Date.now()}`, description: '', qty: 1, unit: 'Pcs',
@@ -1809,7 +1803,6 @@ function initializeOfferModule(deps) {
         if (row && e.target.closest('.move-handle')) {
             draggedItemIndex = parseInt(row.dataset.itemIndex, 10);
             e.dataTransfer.effectAllowed = 'move';
-            // Add a visual indicator
             e.target.closest('tr').classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
         } else {
             e.preventDefault();
@@ -1818,11 +1811,6 @@ function initializeOfferModule(deps) {
 
     offerTableBody.addEventListener('dragover', (e) => {
         e.preventDefault();
-        const targetRow = e.target.closest('tr');
-        if (targetRow && parseInt(targetRow.dataset.itemIndex, 10) !== draggedItemIndex) {
-            // Optional: add a class to the target row for visual feedback
-            // targetRow.classList.add('drag-over-target');
-        }
     });
 
     offerTableBody.addEventListener('drop', (e) => {
@@ -1830,22 +1818,16 @@ function initializeOfferModule(deps) {
         const targetRow = e.target.closest('tr');
         if (targetRow && draggedItemIndex !== null) {
             const targetIndex = parseInt(targetRow.dataset.itemIndex, 10);
-
-            // Reorder the offerItems array
-            const [draggedItem] = offerItems.splice(draggedItemIndex, 1);
+            const draggedItem = offerItems.splice(draggedItemIndex, 1)[0];
             offerItems.splice(targetIndex, 0, draggedItem);
-            
-            // Set sort order to custom and re-render
             currentSortOrder = 'custom';
             setupSortDropdown();
             renderOfferTable();
             captureState();
         }
-        draggedItemIndex = null;
     });
 
     offerTableBody.addEventListener('dragend', (e) => {
-        // Clean up visual indicator from the dragged row
         const draggedRow = offerTableBody.querySelector('.bg-yellow-200');
         if (draggedRow) {
             draggedRow.classList.remove('bg-yellow-200', 'dark:bg-yellow-800/50');
@@ -1889,7 +1871,6 @@ function initializeOfferModule(deps) {
         
         let suggestedName = '';
         if (currentReferenceNumber) {
-            // Logic for existing projects: append or increment version
             const versionMatch = currentReferenceNumber.match(/(V)(\d+)$/);
             if (versionMatch) {
                 const newVersion = parseInt(versionMatch[2], 10) + 1;
@@ -1898,7 +1879,6 @@ function initializeOfferModule(deps) {
                 suggestedName = `${currentReferenceNumber}V2`;
             }
         } else {
-            // Logic for new projects: generate a descriptive name
             const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
             suggestedName = NameController.generateOfferReference({
                 clientName: selectedClient.name,
@@ -1969,38 +1949,6 @@ function initializeOfferModule(deps) {
             sortDropdown.classList.add('hidden');
         }
     });
-
-    const mainScroller = document.querySelector('main');
-    if (mainScroller && offerTableBody) {
-        let isPanning = false;
-        let startY, startScrollTop;
-
-        offerTableBody.addEventListener('mousedown', (e) => {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                isPanning = true;
-                startY = e.pageY;
-                startScrollTop = mainScroller.scrollTop;
-                offerTableBody.style.cursor = 'grabbing';
-                document.body.style.cursor = 'grabbing'; // Apply to body to avoid flicker
-            }
-        });
-
-        window.addEventListener('mousemove', (e) => {
-            if (!isPanning) return;
-            e.preventDefault();
-            const walk = e.pageY - startY;
-            mainScroller.scrollTop = startScrollTop - walk;
-        });
-
-        window.addEventListener('mouseup', () => {
-            if (isPanning) {
-                isPanning = false;
-                offerTableBody.style.cursor = 'default';
-                document.body.style.cursor = 'default';
-            }
-        });
-    }
 
     window.addItemsToOffer = (itemsToAdd) => {
         if (!itemsToAdd || itemsToAdd.length === 0) return;
