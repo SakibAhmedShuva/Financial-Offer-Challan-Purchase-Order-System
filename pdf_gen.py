@@ -439,7 +439,6 @@ def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_group
 
         add_summary_row(grand_total_label, grand_total_values, is_bold=True, is_grand_total=True)
 
-
 def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     pdf = PDF()
     pdf.set_header_color(header_color_hex)
@@ -587,7 +586,18 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         sub_total_usd = sum(scope['total_usd'] for scope in summary_scopes.values())
         sub_total_bdt = sum(scope['total_bdt'] for scope in summary_scopes.values())
         
-        sorted_scopes = sorted(summary_scopes.items())
+        # --- SORTING FIX START ---
+        scope_order = ['foreign', 'localsupply', 'installation']
+        def sort_key(item):
+            key_parts = item[0].split('-')
+            if len(key_parts) == 2:
+                scope_type, sub_type = key_parts
+                if sub_type in scope_order:
+                    return (scope_order.index(sub_type), scope_type)
+            return (len(scope_order), item[0])
+
+        sorted_scopes = sorted(summary_scopes.items(), key=sort_key)
+        # --- SORTING FIX END ---
 
         summary_row_height = 8 * 0.8
         for i, (key, scope) in enumerate(sorted_scopes):
@@ -627,7 +637,6 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
 
         if has_additional_charges:
             add_summary_row(financial_labels.get('subtotalForeign', 'Sub-Total:'), sub_total_usd, sub_total_bdt, is_bold=True)
-            # REVISED: Conditionally add rows
             if freight > 0 and is_foreign_visible:
                 add_summary_row(financial_labels.get('freight', 'Sea Freight:'), freight, None)
             if is_local_part_visible:
@@ -642,21 +651,20 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         
         add_summary_row(financial_labels.get('grandtotalForeign', 'Grand Total:'), grand_total_usd, grand_total_bdt, is_bold=True, is_grand=True)
         
+        # --- "IN WORDS" FIX START ---
         if data.get('has_foreign_part') or data.get('has_local_part'):
             pdf.ln(5)
+            pdf.set_font('Arial', 'B', 10)
+            pdf.set_fill_color(238, 229, 118)
+
             if data.get('has_foreign_part'):
-                pdf.set_font('Arial', 'B', 10)
-                pdf.set_fill_color(238, 229, 118)
-                pdf.cell(50, 8, "In Words (Foreign Part):", 1, 0, 'L', fill=True)
-                pdf.set_font('Arial', '', 10)
-                pdf.cell(140, 8, sanitize_text(data.get('words_usd', 'N/A')), 1, 1, 'L')
+                in_words_text_usd = f"In Words (Foreign Part):   {sanitize_text(data.get('words_usd', 'N/A'))}"
+                pdf.cell(0, 8, in_words_text_usd, 1, 1, 'C', fill=True)
             
             if data.get('has_local_part'):
-                pdf.set_font('Arial', 'B', 10)
-                pdf.set_fill_color(238, 229, 118)
-                pdf.cell(50, 8, "In Words (Local Part):", 1, 0, 'L', fill=True)
-                pdf.set_font('Arial', '', 10)
-                pdf.cell(140, 8, sanitize_text(data.get('words_bdt', 'N/A')), 1, 1, 'L')
+                in_words_text_bdt = f"In Words (Local Part):   {sanitize_text(data.get('words_bdt', 'N/A'))}"
+                pdf.cell(0, 8, in_words_text_bdt, 1, 1, 'C', fill=True)
+        # --- "IN WORDS" FIX END ---
         
         if data.get('has_foreign_part') and freight > 0:
             pdf.ln(5)
@@ -705,22 +713,20 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         draw_boq_content(pdf, data, sections, visible_price_groups)
         draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only)
         
+        # --- "IN WORDS" FIX START ---
         if data.get('has_foreign_part') or data.get('has_local_part'):
             pdf.ln(5)
+            pdf.set_font('Arial', 'B', 10)
+            pdf.set_fill_color(238, 229, 118)
 
         if data.get('has_foreign_part'):
-            pdf.set_font('Arial', 'B', 10)
-            pdf.set_fill_color(238, 229, 118)
-            pdf.cell(50, 8, "In Words (Foreign Part):", 1, 0, 'L', fill=True)
-            pdf.set_font('Arial', '', 10)
-            pdf.cell(140, 8, sanitize_text(data.get('words_usd', 'N/A')), 1, 1, 'L')
+            in_words_text_usd = f"In Words (Foreign Part):   {sanitize_text(data.get('words_usd', 'N/A'))}"
+            pdf.cell(0, 8, in_words_text_usd, 1, 1, 'C', fill=True)
         
         if data.get('has_local_part'):
-            pdf.set_font('Arial', 'B', 10)
-            pdf.set_fill_color(238, 229, 118)
-            pdf.cell(50, 8, "In Words (Local Part):", 1, 0, 'L', fill=True)
-            pdf.set_font('Arial', '', 10)
-            pdf.cell(140, 8, sanitize_text(data.get('words_bdt', 'N/A')), 1, 1, 'L')
+            in_words_text_bdt = f"In Words (Local Part):   {sanitize_text(data.get('words_bdt', 'N/A'))}"
+            pdf.cell(0, 8, in_words_text_bdt, 1, 1, 'C', fill=True)
+        # --- "IN WORDS" FIX END ---
         
         if data.get('has_foreign_part'):
             if freight > 0:
@@ -745,7 +751,6 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     pdf.is_summary_page = False
 
     return pdf.output(dest='S').encode('latin-1')
-
 
 def generate_purchase_order_pdf(po_data, auth_dir, header_color_hex):
     items, project_info, financials = po_data.get('items', []), po_data.get('project_info', {}), po_data.get('financials', {})
