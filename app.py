@@ -1529,9 +1529,9 @@ def update_master_price():
 
     if success:
         log_activity(admin_email, "Master Price Update", f"Updated {item_code} to {value_to_save}", "N/A")
-        print("Re-initializing data after price update...")
-        data_management.initialize_data(CONFIG, force_rebuild=True)
-        print("Data re-initialized.")
+        # print("Re-initializing data after price update...")
+        # data_management.initialize_data(CONFIG, force_rebuild=True)
+        # print("Data re-initialized.")
 
     return jsonify({'success': success, 'message': message})
 
