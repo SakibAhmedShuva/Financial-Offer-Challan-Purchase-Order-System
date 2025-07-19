@@ -5,6 +5,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.drawing.image import Image
 from openpyxl.cell.rich_text import TextBlock, CellRichText, InlineFont
+from openpyxl.utils import get_column_letter
 from app_helpers import to_words_usd, to_words_bdt
 
 # --- Helper to prevent conversion errors ---
@@ -72,10 +73,12 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
     in_table, table_data = False, []
     tnc_headers = ["Foreign Part:", "Local Part (Supply):", "Local Part (Installation):"]
     
-    headers_needing_space = [
+    headers_needing_space_before = [
         "Local Part (Supply):",
+        "Local Part (Installation):"
+    ]
+    headers_needing_space_after = [
         "Payment Schedule (Local Supply):",
-        "Local Part (Installation):",
         "Payment Schedule (Installation):"
     ]
 
@@ -84,7 +87,7 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
         line = line.strip()
         if not line: continue
 
-        if any(h in line for h in headers_needing_space):
+        if any(h in line for h in headers_needing_space_before):
             row_cursor += 1
 
         if line == 'TABLE_START': in_table, table_data = True, []; continue
@@ -128,6 +131,9 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
             ws.merge_cells(start_row=row_cursor, start_column=1, end_row=row_cursor, end_column=3)
             ws.cell(row=row_cursor, column=1).alignment = Alignment(wrap_text=True, vertical='top')
             row_cursor += 1
+        
+        if any(h in line for h in headers_needing_space_after):
+            row_cursor += 1
 
     row_cursor += 3
     ws.cell(row=row_cursor, column=1, value="Sincerely,").font = bold_font
@@ -150,9 +156,8 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
     ws.cell(row=row_cursor, column=1, value="Manager, Business Development"); row_cursor += 1
     ws.cell(row=row_cursor, column=1, value="AMO Green Energy Limited"); row_cursor += 1
 
-def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_2_num, financial_labels, is_local_only=False):
+def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_2_num, financial_labels, is_local_only, item_start_row, item_end_row):
     financials = data.get('financials', {})
-    items = data.get('items', [])
     has_additional_charges = data.get('has_additional_charges', False)
 
     header_fill = PatternFill(start_color="EEE576", end_color="EEE576", fill_type="solid")
@@ -161,6 +166,8 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
     grand_total_font = Font(bold=True, size=12)
     red_bold_font = Font(bold=True, color="FF0000")
     right_align = Alignment(horizontal='right', vertical='center')
+    
+    summary_cell_coords = {} # To store coordinates like {'subtotal_foreign': 'F30'}
 
     value_cols = {}
     current_price_col_start = 5 
@@ -173,10 +180,16 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
     current_row = ws.max_row
 
     subtotals = {}
-    for section in visible_price_sections:
-        total_key = section['sub'][1]['key']
-        subtotals[section['key']] = sum(safe_float(it.get(total_key, 0)) for it in items)
-    
+    if item_start_row <= item_end_row:
+        for section in visible_price_sections:
+            total_col_idx = value_cols.get(section['key'])
+            if total_col_idx:
+                col_letter = get_column_letter(total_col_idx)
+                subtotals[section['key']] = f"=SUM({col_letter}{item_start_row}:{col_letter}{item_end_row})"
+    else: # No items
+        for section in visible_price_sections:
+            subtotals[section['key']] = 0
+
     freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
     delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
     vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
@@ -184,22 +197,6 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
     discount_foreign = safe_float(financials.get('discount_foreign_usd')) if financials.get('use_discount_foreign') else 0
     discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
     discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
-
-    grand_total_foreign = subtotals.get('foreign', 0) + freight - discount_foreign
-    grand_total_local_supply = subtotals.get('local_supply_price', 0) - discount_local
-    grand_total_install = subtotals.get('installation_price', 0) - discount_install
-
-    visible_section_keys = [s['key'] for s in visible_price_sections]
-    if 'local_supply_price' in visible_section_keys:
-        grand_total_local_supply += delivery + vat + ait
-    elif 'installation_price' in visible_section_keys:
-        grand_total_install += delivery + vat + ait
-        
-    grand_totals = {
-        'foreign': grand_total_foreign,
-        'local_supply_price': grand_total_local_supply,
-        'installation_price': grand_total_install
-    }
     
     grand_total_label = financial_labels.get('grandtotalLocal', 'Grand Total (BDT):') if is_local_only else financial_labels.get('grandtotalForeign', 'Grand Total:')
 
@@ -227,6 +224,7 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if not col_idx or value is None: continue
             
             value_cell = ws.cell(row=current_row, column=col_idx, value=value)
+            summary_cell_coords[(label, key)] = value_cell.coordinate # Store coordinate
             
             price_header_cell = ws.cell(row=header_row_2_num, column=col_idx-1)
             
@@ -246,15 +244,9 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                  cell.fill = header_fill
 
     if has_additional_charges:
-        # NEW: Added separate sub-total for local supply
-        local_supply_subtotal = {'local_supply_price': subtotals.get('local_supply_price', 0)}
-        if local_supply_subtotal['local_supply_price'] > 0:
-            add_financial_row("Sub-Total (Local Supply):", local_supply_subtotal, is_bold=True)
-            
-        if 'installation_price' in visible_section_keys:
-            install_subtotal = {'installation_price': subtotals.get('installation_price', 0)}
-            add_financial_row("Sub-Total (Installation):", install_subtotal, is_bold=True)
-
+        add_financial_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotals, is_bold=True)
+        
+        visible_section_keys = [s['key'] for s in visible_price_sections]
         is_foreign_visible_boq = 'foreign' in visible_section_keys
         is_local_supply_visible_boq = 'local_supply_price' in visible_section_keys
         is_install_visible_boq = 'installation_price' in visible_section_keys
@@ -277,6 +269,51 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             }
             add_financial_row("Discount:", {k: v for k, v in discount_values.items() if v is not None}, is_red=True, is_bold=True)
     
+    # Grand Total Formula Logic
+    grand_totals = {}
+    for section in visible_price_sections:
+        key = section['key']
+        
+        formula_parts = []
+        subtotal_label = financial_labels.get('subtotalForeign', 'Sub Total:')
+        subtotal_coord = summary_cell_coords.get((subtotal_label, key))
+        if subtotal_coord:
+            formula_parts.append(subtotal_coord)
+        
+        if key == 'foreign':
+            freight_coord = summary_cell_coords.get((financial_labels.get('freight', 'Freight:'), key))
+            discount_coord = summary_cell_coords.get(("Discount:", key))
+            if freight_coord: formula_parts.append(f"+{freight_coord}")
+            if discount_coord: formula_parts.append(f"+{discount_coord}") # Discount is already negative
+        
+        if key == 'local_supply_price':
+            delivery_coord = summary_cell_coords.get((financial_labels.get('delivery', 'Delivery:'), key))
+            vat_coord = summary_cell_coords.get((financial_labels.get('vat', 'VAT:'), key))
+            ait_coord = summary_cell_coords.get((financial_labels.get('ait', 'AIT:'), key))
+            discount_coord = summary_cell_coords.get(("Discount:", key))
+            if delivery_coord: formula_parts.append(f"+{delivery_coord}")
+            if vat_coord: formula_parts.append(f"+{vat_coord}")
+            if ait_coord: formula_parts.append(f"+{ait_coord}")
+            if discount_coord: formula_parts.append(f"+{discount_coord}")
+        
+        if key == 'installation_price':
+            discount_coord = summary_cell_coords.get(("Discount:", key))
+            # If local supply is hidden, delivery/vat/ait might apply here
+            if not 'local_supply_price' in visible_section_keys:
+                delivery_coord = summary_cell_coords.get((financial_labels.get('delivery', 'Delivery:'), key))
+                vat_coord = summary_cell_coords.get((financial_labels.get('vat', 'VAT:'), key))
+                ait_coord = summary_cell_coords.get((financial_labels.get('ait', 'AIT:'), key))
+                if delivery_coord: formula_parts.append(f"+{delivery_coord}")
+                if vat_coord: formula_parts.append(f"+{vat_coord}")
+                if ait_coord: formula_parts.append(f"+{ait_coord}")
+            if discount_coord: formula_parts.append(f"+{discount_coord}")
+
+        if not formula_parts:
+            # If no additional charges, grand total is just the subtotal
+            grand_totals[key] = subtotals.get(key, 0)
+        else:
+            grand_totals[key] = f"={ ''.join(formula_parts) }"
+
     add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
 
 
@@ -341,10 +378,21 @@ def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
             cell.alignment = center_align
             cell.border = thin_border
     
+    item_start_row = ws.max_row + 1
     for i, item in enumerate(items):
+        qty_cell_coord = f"{get_column_letter(3)}{ws.max_row + 1}"
         row_data = [i + 1, parse_html_to_richtext(item.get('description', '')), int(item.get('qty', 1)), item.get('unit', 'Pcs')]
-        row_data.extend([safe_float(item.get(sub['key'], 0)) for section in visible_price_sections for sub in section['sub']])
         
+        price_col_start_idx = 5
+        for section in visible_price_sections:
+            price_val = safe_float(item.get(section['sub'][0]['key'], 0))
+            price_cell_coord = f"{get_column_letter(price_col_start_idx)}{ws.max_row + 1}"
+            
+            # Add price value and formula for total
+            row_data.append(price_val)
+            row_data.append(f"={qty_cell_coord}*{price_cell_coord}")
+            price_col_start_idx += 2
+
         ws.append(row_data)
         current_row_obj = ws[ws.max_row]
         for idx, cell in enumerate(current_row_obj):
@@ -360,6 +408,7 @@ def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
                     cell.number_format = '"BDT "#,##0.00'
                 else:
                     cell.number_format = '#,##0.00'
+    item_end_row = ws.max_row
 
     ws.column_dimensions['A'].width = 5
     ws.column_dimensions['B'].width = 60
@@ -371,7 +420,7 @@ def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
             ws.column_dimensions[chr(64 + col_letter_start_idx)].width = 18
             col_letter_start_idx += 1
 
-    draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_2_num, financial_labels, is_local_only)
+    draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_2_num, financial_labels, is_local_only, item_start_row, item_end_row)
 
 def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     wb = Workbook()
@@ -379,24 +428,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     items = data.get('items', [])
     financials = data.get('financials', {})
 
-    subtotal_foreign = sum(safe_float(it.get('foreign_total_usd', 0)) for it in items)
-    subtotal_local_supply = sum(safe_float(it.get('local_supply_total_bdt', 0)) for it in items)
-    subtotal_installation = sum(safe_float(it.get('installation_total_bdt', 0)) for it in items)
-
-    freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
-    delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
-    vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
-    ait = safe_float(financials.get('ait_local_bdt')) if financials.get('use_ait') else 0
-    discount_foreign = safe_float(financials.get('discount_foreign_usd')) if financials.get('use_discount_foreign') else 0
-    discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
-    discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
-
-    grand_total_usd = subtotal_foreign + freight - discount_foreign
-    grand_total_bdt = subtotal_local_supply + subtotal_installation + delivery + vat + ait - discount_local - discount_install
-    
-    data['words_usd'] = to_words_usd(grand_total_usd)
-    data['words_bdt'] = to_words_bdt(grand_total_bdt)
-    
     is_summary_enabled = data.get('isSummaryPageEnabled', False)
     financial_labels = data.get('financialLabels', {})
     
@@ -414,6 +445,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     is_install_visible = visible_columns.get('installation_price')
     is_local_only = not is_foreign_visible and (is_local_visible or is_install_visible)
     is_local_part_visible = is_local_visible or is_install_visible
+    
+    freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
 
     has_freight_and_is_visible = freight > 0 and is_foreign_visible
     if has_freight_and_is_visible:
@@ -478,10 +511,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
                 cell.alignment = center_align_wrap
         ws.row_dimensions[11].height = 40
         
-        sub_total_usd = sum(scope['total_usd'] for scope in summary_scopes.values())
-        sub_total_bdt = sum(scope['total_bdt'] for scope in summary_scopes.values())
-        
-        # --- SORTING FIX START ---
         scope_order = ['foreign', 'localsupply', 'installation']
         def sort_key(item):
             key_parts = item[0].split('-')
@@ -492,9 +521,9 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             return (len(scope_order), item[0])
 
         sorted_scopes = sorted(summary_scopes.items(), key=sort_key)
-        # --- SORTING FIX END ---
-
+        
         current_row_idx = 12
+        scope_start_row = 12
         for i, (key, scope) in enumerate(sorted_scopes):
             sl_cell = ws.cell(row=current_row_idx, column=1, value=chr(65 + i))
             sl_cell.alignment = center_align_wrap
@@ -508,84 +537,105 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
                 ws.cell(row=current_row_idx, column=col).border = thin_border
                 
             current_row_idx +=1
+        scope_end_row = current_row_idx - 1
+        
+        summary_cell_coords = {}
+        summary_data_to_write = []
+
+        sub_total_usd_formula = f"=SUM(C{scope_start_row}:C{scope_end_row})" if scope_start_row <= scope_end_row else 0
+        sub_total_bdt_formula = f"=SUM(D{scope_start_row}:D{scope_end_row})" if scope_start_row <= scope_end_row else 0
+        
+        delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
+        vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
+        ait = safe_float(financials.get('ait_local_bdt')) if financials.get('use_ait') else 0
+        discount_foreign = safe_float(financials.get('discount_foreign_usd')) if financials.get('use_discount_foreign') else 0
+        discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
+        discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
 
         has_additional_charges = data.get('has_additional_charges', False)
         
-        summary_data = []
+        subtotal_label = financial_labels.get('subtotalForeign', 'Sub-Total:')
+        summary_data_to_write.append({'label': subtotal_label, 'usd': sub_total_usd_formula, 'bdt': sub_total_bdt_formula, 'bold': True})
+        
         if has_additional_charges:
-            summary_data.append((financial_labels.get('subtotalForeign', 'Sub-Total:'), sub_total_usd, sub_total_bdt))
             if freight > 0 and is_foreign_visible:
-                summary_data.append((financial_labels.get('freight', 'Sea Freight:'), freight, None))
+                summary_data_to_write.append({'label': financial_labels.get('freight', 'Sea Freight:'), 'usd': freight, 'bdt': None})
             if is_local_part_visible:
                 if delivery > 0:
-                    summary_data.append((financial_labels.get('delivery', 'Delivery Charge:'), None, delivery))
+                    summary_data_to_write.append({'label': financial_labels.get('delivery', 'Delivery Charge:'), 'usd': None, 'bdt': delivery})
                 if vat > 0:
-                    summary_data.append((financial_labels.get('vat', 'VAT:'), None, vat))
+                    summary_data_to_write.append({'label': financial_labels.get('vat', 'VAT:'), 'usd': None, 'bdt': vat})
                 if ait > 0:
-                    summary_data.append((financial_labels.get('ait', 'AIT:'), None, ait))
+                    summary_data_to_write.append({'label': financial_labels.get('ait', 'AIT:'), 'usd': None, 'bdt': ait})
             if discount_foreign > 0 or (discount_local + discount_install) > 0:
-                summary_data.append(("Special Discount:", -discount_foreign, -(discount_local + discount_install)))
-        
-        grand_total_label = financial_labels.get('grandtotalLocal', 'Grand Total (BDT):') if is_local_only else financial_labels.get('grandtotalForeign', 'Grand Total:')
-        summary_data.append((grand_total_label, grand_total_usd, grand_total_bdt))
+                summary_data_to_write.append({'label': "Special Discount:", 'usd': -discount_foreign, 'bdt': -(discount_local + discount_install), 'red': True, 'bold': True})
 
-
-        for label, val_usd, val_bdt in summary_data:
-            label_cell = ws.cell(row=current_row_idx, column=1, value=label)
-            usd_cell = ws.cell(row=current_row_idx, column=3, value=val_usd if val_usd is not None else "")
-            bdt_cell = ws.cell(row=current_row_idx, column=4, value=val_bdt if val_bdt is not None else "")
+        for item in summary_data_to_write:
+            label_cell = ws.cell(row=current_row_idx, column=1, value=item['label'])
+            usd_cell = ws.cell(row=current_row_idx, column=3, value=item['usd'] if item['usd'] is not None else "")
+            bdt_cell = ws.cell(row=current_row_idx, column=4, value=item['bdt'] if item['bdt'] is not None else "")
             
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=2)
             label_cell.alignment = right_align
+            if item.get('bold'): label_cell.font = bold_font
+            if item.get('red'): label_cell.font = red_bold_font
             
-            usd_cell.number_format = '"$"#,##0.00'
-            bdt_cell.number_format = '"BDT "#,##0.00'
+            if item['usd'] is not None:
+                summary_cell_coords[item['label']] = {'usd': usd_cell.coordinate}
+                usd_cell.number_format = '"$"#,##0.00'
+                if item.get('bold'): usd_cell.font = bold_font
+                if item.get('red'): usd_cell.font = red_bold_font
 
-            is_total_row = "Total" in label
-            is_discount_row = "Discount" in label
-            
-            if is_total_row:
-                label_cell.font = bold_font
-                usd_cell.font = bold_font
-                bdt_cell.font = bold_font
-            
-            if is_discount_row:
-                label_cell.font = red_bold_font
-                usd_cell.font = red_bold_font
-                bdt_cell.font = red_bold_font
-            
-            if "Grand Total" in label:
-                for col in range(1, 5): ws.cell(row=current_row_idx, column=col).fill = header_fill
+            if item['bdt'] is not None:
+                if item['label'] not in summary_cell_coords: summary_cell_coords[item['label']] = {}
+                summary_cell_coords[item['label']]['bdt'] = bdt_cell.coordinate
+                bdt_cell.number_format = '"BDT "#,##0.00'
+                if item.get('bold'): bdt_cell.font = bold_font
+                if item.get('red'): bdt_cell.font = red_bold_font
             
             for col in range(1, 5): ws.cell(row=current_row_idx, column=col).border = thin_border
-            
             current_row_idx += 1
 
-        current_row_idx += 1
+        # Grand Total Formula
+        usd_parts = [v['usd'] for k, v in summary_cell_coords.items() if 'usd' in v and summary_cell_coords[k]['usd'] is not None]
+        bdt_parts = [v['bdt'] for k, v in summary_cell_coords.items() if 'bdt' in v and summary_cell_coords[k]['bdt'] is not None]
+        grand_total_usd_formula = f"=SUM({','.join(usd_parts)})" if usd_parts else 0
+        grand_total_bdt_formula = f"=SUM({','.join(bdt_parts)})" if bdt_parts else 0
         
-        # --- "IN WORDS" FIX START ---
+        grand_total_label_text = financial_labels.get('grandtotalLocal', 'Grand Total (BDT):') if is_local_only else financial_labels.get('grandtotalForeign', 'Grand Total:')
+        ws.cell(row=current_row_idx, column=1, value=grand_total_label_text)
+        ws.cell(row=current_row_idx, column=3, value=grand_total_usd_formula)
+        ws.cell(row=current_row_idx, column=4, value=grand_total_bdt_formula)
+        ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=2)
+
+        for col in range(1, 5):
+            cell = ws.cell(row=current_row_idx, column=col)
+            cell.font = bold_font
+            cell.fill = header_fill
+            cell.border = thin_border
+            if col > 1 : cell.number_format = '"$"#,##0.00' if col == 3 else '"BDT "#,##0.00'
+            else: cell.alignment = right_align
+        current_row_idx += 2
+
         if data.get('has_foreign_part'):
-            in_words_text_usd = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
+            in_words_text_usd = f"In Words (Foreign Part):   {to_words_usd(data.get('grand_total_usd', 0))}"
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_usd)
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
             cell.font = bold_font
             cell.fill = header_fill
             cell.alignment = center_align_wrap
-            for col_idx in range(1, 5): 
-                ws.cell(row=current_row_idx, column=col_idx).border = thin_border
+            for col_idx in range(1, 5): ws.cell(row=current_row_idx, column=col_idx).border = thin_border
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            in_words_text_bdt = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
+            in_words_text_bdt = f"In Words (Local Part):   {to_words_bdt(data.get('grand_total_bdt', 0))}"
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_bdt)
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
             cell.font = bold_font
             cell.fill = header_fill
             cell.alignment = center_align_wrap
-            for col_idx in range(1, 5): 
-                ws.cell(row=current_row_idx, column=col_idx).border = thin_border
+            for col_idx in range(1, 5): ws.cell(row=current_row_idx, column=col_idx).border = thin_border
             current_row_idx += 1
-        # --- "IN WORDS" FIX END ---
         
         if data.get('has_foreign_part') and freight > 0:
             current_row_idx += 1
@@ -643,9 +693,8 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         
         max_col_for_merge = ws.max_column
 
-        # --- "IN WORDS" FIX START ---
         if data.get('has_foreign_part'):
-            in_words_text = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
+            in_words_text = f"In Words (Foreign Part):   {to_words_usd(data.get('grand_total_usd', 0))}"
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
@@ -654,14 +703,13 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            in_words_text = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
+            in_words_text = f"In Words (Local Part):   {to_words_bdt(data.get('grand_total_bdt', 0))}"
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
             cell.alignment = center_align_wrap
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=max_col_for_merge)
             current_row_idx += 1
-        # --- "IN WORDS" FIX END ---
         
         if data.get('has_foreign_part') and freight > 0:
             current_row_idx += 1
@@ -689,7 +737,9 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
 
 
 def generate_purchase_order_xlsx(po_data, auth_dir, header_color_hex="D6EAF8"):
-    items, project_info, financials = po_data.get('items', []), po_data.get('project_info', {}), po_data.get('financials', {})
+    items = po_data.get('items', [])
+    project_info = po_data.get('project_info', {})
+    
     original_fo_ref = project_info.get('referenceNumber', 'UnknownRef')
     po_reference_number = original_fo_ref.replace('FO_', 'PO_', 1) if 'FO_' in original_fo_ref else f"PO_{original_fo_ref}"
     
@@ -706,25 +756,31 @@ def generate_purchase_order_xlsx(po_data, auth_dir, header_color_hex="D6EAF8"):
     ws.append([f"Original FO Ref:", original_fo_ref]); ws.append([])
     headers = ['SL', 'Description', 'PO Price', 'Qty', 'Unit', 'Total']
     ws.append(headers)
-    header_row = ws[ws.max_row]
-    for cell in header_row: cell.font, cell.fill, cell.alignment, cell.border = header_font, header_fill, center_align, thin_border
+    header_row_num = ws.max_row
+    header_row_obj = ws[header_row_num]
+    for cell in header_row_obj: cell.font, cell.fill, cell.alignment, cell.border = header_font, header_fill, center_align, thin_border
 
-    grand_total = 0
+    item_start_row = ws.max_row + 1
     for i, item in enumerate(items):
-        po_total = safe_float(item.get('po_total_usd', 0))
-        grand_total += po_total
-        row_data = [i + 1, parse_html_to_richtext(item.get('description', '')), safe_float(item.get('po_price_usd', 0)), int(item.get('qty', 1)), item.get('unit', 'Pcs'), po_total]
+        current_row_num = ws.max_row + 1
+        price_cell = f"C{current_row_num}"
+        qty_cell = f"D{current_row_num}"
+        total_formula = f"={price_cell}*{qty_cell}"
+        
+        row_data = [i + 1, parse_html_to_richtext(item.get('description', '')), safe_float(item.get('po_price_usd', 0)), int(item.get('qty', 1)), item.get('unit', 'Pcs'), total_formula]
         ws.append(row_data)
         current_row = ws[ws.max_row]
         for idx, cell in enumerate(current_row):
             cell.border = thin_border
             if idx == 1: cell.alignment = left_align
             else: cell.alignment = right_align
-            if isinstance(cell.value, (int, float)): cell.number_format = '#,##0.00'
+            if isinstance(cell.value, (int, float)) or idx == 5: cell.number_format = '#,##0.00'
+    item_end_row = ws.max_row
     
     ws.append([])
+    grand_total_formula = f"=SUM(F{item_start_row}:F{item_end_row})" if item_start_row <= item_end_row else 0
     ws.cell(row=ws.max_row + 1, column=len(headers) - 1, value="Grand Total:").font = grand_total_font
-    total_cell = ws.cell(row=ws.max_row, column=len(headers), value=grand_total)
+    total_cell = ws.cell(row=ws.max_row, column=len(headers), value=grand_total_formula)
     total_cell.font = grand_total_font
     total_cell.number_format = '#,##0.00'
     ws.cell(row=ws.max_row -1, column=len(headers)-1).alignment = right_align
