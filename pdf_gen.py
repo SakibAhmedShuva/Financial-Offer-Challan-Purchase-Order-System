@@ -288,7 +288,8 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
         sanitized_desc_for_height_calc = sanitize_text(plain_desc_text)
         desc_lines = pdf.multi_cell(sections['base'][1]['width'], line_height, sanitized_desc_for_height_calc, 0, 'L', split_only=True)
         num_lines = len(desc_lines)
-        row_height = (num_lines * line_height) + 4
+        # FIX: Reduced padding from +4 to +2
+        row_height = (num_lines * line_height) + 1
         
         if pdf.get_y() + row_height > pdf.page_break_trigger:
             pdf.add_page()
@@ -305,7 +306,8 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
         # Description cell box
         pdf.rect(current_x, start_y, sections['base'][1]['width'], row_height)
         desc_text_x = current_x + 1
-        desc_text_y = start_y + 2 # Padding from top
+        # FIX: Reduced top padding from +2 to +1
+        desc_text_y = start_y + 1
         current_x += sections['base'][1]['width']
 
         # Reset Y for other cells in the row
