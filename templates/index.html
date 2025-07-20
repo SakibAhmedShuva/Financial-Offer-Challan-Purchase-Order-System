@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en" class=""> 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Offer System</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/style.css">
+
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } } } }
+    </script>
+    <style>
+        .search-results-dropdown {
+            position: absolute;
+            width: 100%;
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            z-index: 20;
+            margin-top: 0.5rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .dark .search-results-dropdown {
+            background-color: #1e293b;
+            border-color: #334155;
+        }
+
+        @media (min-width: 1024px) {
+            /* The main content area will no longer have a left margin */
+            .main-content-wrapper {
+                margin-left: 0 !important;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased font-sans bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300">
+
+    <div id="toast-container"></div>
+
+    <div id="login-page" class="flex items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-800">
+        <div class="w-full max-w-md p-8 space-y-8 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl">
+            <div class="text-center">
+                <i class="fas fa-file-invoice-dollar fa-3x text-sky-500"></i>
+                <h2 class="mt-6 text-3xl font-bold text-slate-900 dark:text-white">Financial Offer System</h2>
+                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Sign in to continue</p>
+            </div>
+            <form id="login-form" class="space-y-6">
+                <div>
+                    <label for="email" class="sr-only">Email address</label>
+                    <input id="email" type="email" required class="w-full px-4 py-3 text-slate-900 bg-slate-100 dark:bg-slate-800 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Email address">
+                </div>
+                <div>
+                    <label for="password" class="sr-only">Password</label>
+                    <input id="password" type="password" required class="w-full px-4 py-3 text-slate-900 bg-slate-100 dark:bg-slate-800 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Password">
+                </div>
+                <div id="login-error" class="text-red-500 text-sm hidden font-medium"></div>
+                <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-all duration-300">
+                    Sign in
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="app-page" class="hidden flex h-screen">
+        <div id="sidebar-hover-trigger" class="fixed top-0 left-0 w-5 h-full z-50 hidden lg:block"></div>
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-40 hidden lg:hidden transition-opacity duration-300"></div>
+        
+        <aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-slate-800 text-slate-200 z-50 shadow-xl transform -translate-x-full transition-transform duration-300 flex flex-col">
+            <div class="flex items-center justify-between h-16 px-6 border-b border-slate-700 flex-shrink-0">
+                <span class="text-2xl font-bold flex items-center"><i class="fas fa-file-invoice-dollar mr-2 text-sky-400"></i>F.O.S</span>
+                <button id="sidebar-close" class="text-slate-300 text-2xl focus:outline-none hover:text-white lg:hidden"><i class="fas fa-times"></i></button>
+            </div>
+            <nav id="main-nav" class="flex-1 px-2 py-4 space-y-1">
+                <a href="#" data-tab="generator" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-cogs fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">Offer</span></a>
+                <a href="#" data-tab="challan" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-truck fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">Challan</span></a>
+                <a href="#" data-tab="projects" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-project-diagram fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">My Projects</span></a>
+                <a href="#" data-tab="shared-with-me" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-share-alt fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">Shared With Me</span></a>
+                <a href="#" data-tab="my-reviews" class="tab-button relative flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-user-check fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">My Reviews</span></a>
+                <a href="#" data-tab="ai-helper" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-magic fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">AI Helper</span></a>
+                <div id="admin-only-tabs" class="hidden">
+                    <hr class="border-slate-700 my-2">
+                    <a href="#" id="po-tab-button" data-tab="purchase-order" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-shopping-cart fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">Purchase Order</span></a>
+                    <a href="#" id="review-tab-button" data-tab="admin-review" class="tab-button relative flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-check-double fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">Admin Review</span></a>
+                    <a href="#" data-tab="activity-log" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-history fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">Activity Log</span></a>
+                    <a href="#" data-tab="messaging" class="tab-button flex items-center px-4 py-2.5 rounded-lg hover:bg-slate-700 transition-all duration-200"><i class="fas fa-paper-plane fa-fw mr-3 w-5 text-center text-slate-400"></i> <span class="font-semibold">Send Message</span></a>
+                </div>
+            </nav>
+            <div class="p-4 border-t border-slate-700 flex-shrink-0">
+                 <button id="reinit-btn" class="hidden w-full text-left mb-2 px-4 py-2 text-sm text-white bg-amber-500 rounded-lg hover:bg-amber-600 flex items-center gap-2 transition-all duration-200">Re-init Data</button>
+            </div>
+        </aside>
+
+        <div class="flex-1 flex flex-col main-content-wrapper">
+            <header class="bg-white/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700/50 shadow-sm z-30 flex-shrink-0 backdrop-blur-sm">
+                <div class="mx-auto px-4 sm:px-6 lg:px-8">
+                    <div class="flex items-center justify-between h-16">
+                        <div class="flex items-center">
+                           <button id="sidebar-open" class="mr-4 text-slate-500 dark:text-slate-400 focus:outline-none lg:hidden">
+                                <i class="fas fa-bars fa-lg"></i>
+                            </button>
+                            <h1 id="page-title" class="text-xl font-semibold text-slate-900 dark:text-white">Offer</h1>
+                        </div>
+                        <div class="flex-1 flex justify-center px-2 lg:ml-6 lg:justify-end">
+                            <div class="max-w-lg w-full lg:max-w-xs">
+                                <label for="search" class="sr-only">Search</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <i class="fas fa-search text-slate-400"></i>
+                                    </div>
+                                    <input id="project-search-input" class="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md leading-5 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-300 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 sm:text-sm" placeholder="Search Projects..." type="search">
+                                    <div id="project-search-results" class="search-results-dropdown hidden"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center ml-4 md:ml-6 space-x-4">
+                            <div class="relative">
+                                <button id="notifications-btn" class="p-1 rounded-full text-slate-400 hover:text-slate-500 dark:hover:text-white focus:outline-none">
+                                    <span class="sr-only">View notifications</span>
+                                    <i class="far fa-bell fa-lg"></i>
+                                    <span id="notification-badge-count" class="notification-badge hidden"></span>
+                                </button>
+                                <div id="notifications-dropdown" class="origin-top-right absolute right-0 mt-2 w-80 rounded-md shadow-lg py-1 bg-white dark:bg-slate-800 ring-1 ring-black ring-opacity-5 focus:outline-none hidden">
+                                    <div class="px-4 py-2 text-sm text-slate-700 dark:text-slate-200 font-bold border-b dark:border-slate-700">Notifications</div>
+                                    <div id="notification-items-container"></div>
+                                </div>
+                            </div>
+                            <button id="theme-toggle-btn" class="p-1 rounded-full text-slate-400 hover:text-slate-500 dark:hover:text-white focus:outline-none">
+                                <i class="fas fa-sun dark:hidden"></i>
+                                <i class="fas fa-moon hidden dark:inline"></i>
+                            </button>
+                            <div class="relative">
+                                <button type="button" class="max-w-xs bg-slate-800 rounded-full flex items-center text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-white" id="user-menu-button">
+                                    <img class="h-8 w-8 rounded-full" src="https://placehold.co/32x32/0ea5e9/ffffff?text=U" alt="">
+                                </button>
+                                <div id="user-menu" class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white dark:bg-slate-800 ring-1 ring-black ring-opacity-5 focus:outline-none hidden">
+                                    <span id="user-info" class="block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 border-b dark:border-slate-700"></span>
+                                    <a href="#" id="profile-btn" class="block px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">Your Profile</a>
+                                    <a href="#" id="logout-btn" class="block px-4 py-2 text-sm text-red-500 hover:bg-slate-100 dark:hover:bg-slate-700">Sign out</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+                <div class="max-w-7xl mx-auto">
+                    <div id="tab-content-generator" class=""></div>
+                    <div id="tab-content-challan" class="hidden"></div>
+                    <div id="tab-content-projects" class="hidden"></div>
+                    <div id="tab-content-shared-with-me" class="hidden"></div>
+                    <div id="tab-content-my-reviews" class="hidden"></div>
+                    <div id="tab-content-purchase-order" class="hidden"></div>
+                    <div id="tab-content-admin-review" class="hidden"></div>
+                    <div id="tab-content-activity-log" class="hidden"></div>
+                    <div id="tab-content-ai-helper" class="hidden"></div>
+                    <div id="tab-content-messaging" class="hidden"></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="modal-overlay hidden">
+        <div class="w-full max-w-md p-8 space-y-6 bg-white dark:bg-slate-900 rounded-xl shadow-2xl relative">
+            <button id="profile-modal-close" class="absolute top-4 right-4 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-2xl font-bold">&times;</button>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Update Profile</h2>
+            <form id="profile-form" class="space-y-4">
+                 <div>
+                    <label for="profile-email" class="block mb-2 text-sm font-medium">Email Address</label>
+                    <input id="profile-email" type="email" required class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500">
+                </div>
+                <div>
+                    <label for="profile-password" class="block mb-2 text-sm font-medium">New Password</label>
+                    <input id="profile-password" type="password" required class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500">
+                </div>
+                <button type="submit" class="w-full flex justify-center py-3 px-4 border rounded-lg text-white bg-sky-600 hover:bg-sky-700">Save Changes</button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="share-modal" class="modal-overlay hidden">
+         <div class="w-full max-w-md p-8 space-y-6 bg-white dark:bg-slate-900 rounded-xl shadow-2xl relative">
+            <button id="share-modal-close" class="absolute top-4 right-4 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-2xl font-bold">&times;</button>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Share Project</h2>
+            <form id="share-form" class="space-y-4">
+                <input type="hidden" id="share-project-id">
+                <div>
+                    <label for="share-email" class="block mb-2 text-sm font-medium">User's Email</label>
+                    <input id="share-email" list="user-emails" type="email" required placeholder="Enter email of user to share with" class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500">
+                    <datalist id="user-emails"></datalist>
+                </div>
+                <button type="submit" class="w-full flex justify-center py-3 px-4 border rounded-lg text-white bg-blue-600 hover:bg-blue-700">Share Project</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="save-as-modal" class="modal-overlay hidden">
+        <div class="w-full max-w-md p-8 space-y-6 bg-white dark:bg-slate-900 rounded-xl shadow-2xl relative">
+            <button id="save-as-modal-close" class="absolute top-4 right-4 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-2xl font-bold">&times;</button>
+            <h2 id="save-as-title" class="text-2xl font-bold text-slate-900 dark:text-white">Save As New...</h2>
+            <form id="save-as-form" class="space-y-4">
+                <input type="hidden" id="save-as-type">
+                <div>
+                    <label for="save-as-name" id="save-as-label" class="block mb-2 text-sm font-medium">New Name</label>
+                    <input id="save-as-name" type="text" required class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-sky-500">
+                </div>
+                <div class="flex justify-end gap-4 pt-4">
+                    <button type="button" id="save-as-cancel-btn" class="px-5 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 transition-all">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-all">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay hidden">
+        <div class="w-full max-w-md p-8 space-y-6 bg-white dark:bg-slate-900 rounded-xl shadow-2xl relative">
+            <h2 id="confirm-modal-title" class="text-2xl font-bold text-slate-900 dark:text-white">Confirmation</h2>
+            <p id="confirm-modal-text" class="text-slate-600 dark:text-slate-300">Are you sure?</p>
+            <div class="flex justify-end gap-4 pt-4">
+                <button id="confirm-modal-cancel-btn" class="px-5 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 transition-all">Cancel</button>
+                <button id="confirm-modal-ok-btn" class="px-5 py-2.5 rounded-lg text-white bg-red-600 hover:bg-red-700 transition-all">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="chat-ui-container"></div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/search_result.js"></script>
+    <script src="/static/name_controller.js"></script>
+    <script src="/static/offer.js"></script>
+    <script src="/static/challan.js"></script>
+    <script src="/static/ai-helper.js"></script>
+    <script src="/static/purchase-order.js"></script>
+    <script src="/static/messaging.js"></script>
+    <script src="/static/chat.js"></script>
+    <script src="/static/activity_log.js"></script>
+    
+    <script src="/static/main.js" defer></script>
+</body>
+</html>
