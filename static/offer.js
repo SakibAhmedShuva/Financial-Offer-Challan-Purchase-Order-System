@@ -15,6 +15,11 @@ function initializeOfferModule(deps) {
     let activeScrollListener = null;
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
+    
+    // NEW: State for advanced filters
+    let filterOptions = {};
+    let activeFilters = { product_type: [], make: [], approvals: [], model: [] };
+
 
     const getDefaultFinancialLabels = () => ({
         foreignPrice: 'Foreign Price',
@@ -105,7 +110,7 @@ function initializeOfferModule(deps) {
     const enableSummaryPageCheckbox = document.getElementById('enable-summary-page-checkbox');
     const financialSummaryContainer = document.getElementById('financial-summary-container');
     const includeSignatureCheckbox = document.getElementById('offer-add-signature');
-    const sheetFilterContainer = document.getElementById('offer-sheet-filter-container');
+    const excelFiltersContainer = document.getElementById('offer-excel-filters'); // NEW
     const searchForeignCheckbox = document.getElementById('search-foreign');
     const searchLocalCheckbox = document.getElementById('search-local');
     const foreignSummaryBlock = document.getElementById('foreign-summary');
@@ -715,9 +720,8 @@ function initializeOfferModule(deps) {
         descriptionSearchTimeout = setTimeout(async () => {
             if (cell !== activeDescriptionCell) return;
             try {
-                const selectedSheets = Array.from(sheetFilterContainer.querySelectorAll('input[name="sheet_filter"]:checked')).map(cb => cb.value).join(',');
                 const source = searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local';
-                const apiUrl = `${API_URL}/search_items?q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${source}&types=${encodeURIComponent(selectedSheets)}`;
+                const apiUrl = `${API_URL}/search_items?q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${source}`;
                 
                 const res = await fetch(apiUrl);
                 if (!res.ok) throw new Error('Search failed');
@@ -1328,33 +1332,104 @@ function initializeOfferModule(deps) {
         }
     });
 
-    const loadSheetFilters = async () => {
-        try {
-            const response = await fetch(`${API_URL}/get_sheet_names`);
-            if (!response.ok) throw new Error('Failed to load sheet names');
-            const sheetNames = await response.json();
+    // NEW: Function to create a searchable dropdown filter
+    const createFilterDropdown = (filterType, options) => {
+        const container = document.createElement('div');
+        container.className = 'filter-dropdown-container';
 
-            if (sheetFilterContainer) {
-                sheetFilterContainer.innerHTML = ''; 
-                if (sheetNames.length > 0) {
-                    sheetNames.forEach(name => {
-                        const div = document.createElement('div');
-                        div.className = 'flex items-center';
-                        div.innerHTML = `
-                            <input id="offer-sheet-${name.replace(/\s/g, '-')}" type="checkbox" value="${name}" name="sheet_filter" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" checked>
-                            <label for="offer-sheet-${name.replace(/\s/g, '-')}" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">${name}</label>
-                        `;
-                        sheetFilterContainer.appendChild(div);
-                    });
+        const button = document.createElement('button');
+        button.className = 'filter-dropdown-btn';
+        button.innerHTML = `
+            <span class="filter-label">${filterType.replace('_', ' ')}</span>
+            <span class="filter-count-badge hidden">0</span>
+            <i class="fas fa-chevron-down text-xs"></i>
+        `;
+
+        const panel = document.createElement('div');
+        panel.className = 'filter-dropdown-panel hidden';
+        panel.innerHTML = `
+            <input type="text" class="filter-search-input" placeholder="Search...">
+            <div class="filter-options-list"></div>
+        `;
+
+        container.appendChild(button);
+        container.appendChild(panel);
+        excelFiltersContainer.appendChild(container);
+
+        const optionsList = panel.querySelector('.filter-options-list');
+        const searchInput = panel.querySelector('.filter-search-input');
+        const badge = button.querySelector('.filter-count-badge');
+
+        const renderOptions = (searchText = '') => {
+            optionsList.innerHTML = '';
+            const filteredOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
+            
+            filteredOptions.forEach(option => {
+                const optionEl = document.createElement('div');
+                optionEl.className = 'filter-option';
+                const isChecked = activeFilters[filterType].includes(option);
+                optionEl.innerHTML = `
+                    <input type="checkbox" id="filter-${filterType}-${option}" value="${option}" ${isChecked ? 'checked' : ''}>
+                    <label for="filter-${filterType}-${option}">${option}</label>
+                `;
+                optionsList.appendChild(optionEl);
+            });
+        };
+
+        renderOptions();
+
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
+                if (p !== panel) p.classList.add('hidden');
+            });
+            panel.classList.toggle('hidden');
+        });
+
+        searchInput.addEventListener('input', () => renderOptions(searchInput.value));
+
+        optionsList.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                const value = e.target.value;
+                if (e.target.checked) {
+                    activeFilters[filterType].push(value);
                 } else {
-                    sheetFilterContainer.innerHTML = '<p class="text-slate-400 text-xs">No sheets found.</p>';
+                    activeFilters[filterType] = activeFilters[filterType].filter(v => v !== value);
+                }
+                updateBadge();
+                // Trigger item search automatically
+                itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+            }
+        });
+        
+        const updateBadge = () => {
+            const count = activeFilters[filterType].length;
+            badge.textContent = count;
+            badge.classList.toggle('hidden', count === 0);
+            button.classList.toggle('active', count > 0);
+        };
+    };
+
+    const loadAndRenderFilters = async () => {
+        try {
+            const res = await fetch(`${API_URL}/get_filter_options`);
+            if (!res.ok) throw new Error('Failed to load filter options');
+            filterOptions = await res.json();
+            
+            // Clear existing filters
+            while (excelFiltersContainer.children.length > 1) {
+                excelFiltersContainer.removeChild(excelFiltersContainer.lastChild);
+            }
+
+            // Create new filters
+            for (const [type, options] of Object.entries(filterOptions)) {
+                if (options.length > 0) {
+                    createFilterDropdown(type, options);
                 }
             }
         } catch (error) {
-            console.error('Error loading sheet filters:', error);
-            if (sheetFilterContainer) {
-                sheetFilterContainer.innerHTML = '<p class="text-red-500 text-xs">Error loading sheets.</p>';
-            }
+            console.error('Error loading filters:', error);
+            excelFiltersContainer.innerHTML += `<p class="text-xs text-red-500">Could not load filters.</p>`;
         }
     };
     
@@ -1447,6 +1522,10 @@ function initializeOfferModule(deps) {
                 cleanupSuggestions();
             }
          }
+         // NEW: Close filter panels on outside click
+        if (!e.target.closest('.filter-dropdown-container')) {
+            document.querySelectorAll('.filter-dropdown-panel').forEach(p => p.classList.add('hidden'));
+        }
     });
 
     if(addCustomItemBtn) {
@@ -1642,13 +1721,15 @@ function initializeOfferModule(deps) {
     });
 
     createSearchHandler({
-        searchInput: itemSearchInput, resultsContainer: itemSearchResults, loaderElement: itemSearchLoader, apiEndpoint: `${API_URL}/search_items`, currentUser, minQueryLength: 3,
+        searchInput: itemSearchInput, resultsContainer: itemSearchResults, loaderElement: itemSearchLoader, apiEndpoint: `${API_URL}/search_items`, currentUser, minQueryLength: 0, // Search on empty query
         buildQuery: (query) => {
-            const selectedSheets = Array.from(sheetFilterContainer.querySelectorAll('input[name="sheet_filter"]:checked'))
-                                        .map(cb => cb.value)
-                                        .join(',');
-
-            return `q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local'}&types=${encodeURIComponent(selectedSheets)}`;
+            let url = `q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local'}`;
+            for (const [key, values] of Object.entries(activeFilters)) {
+                if (values.length > 0) {
+                    url += `&${key}=${encodeURIComponent(values.join(','))}`;
+                }
+            }
+            return url;
         },
         renderResults: renderItemResults, 
         onResultSelected: (item) => {
@@ -1690,24 +1771,14 @@ function initializeOfferModule(deps) {
         }
     });
     
-    if (sheetFilterContainer) {
-        sheetFilterContainer.addEventListener('change', (e) => {
-            if (e.target.name === 'sheet_filter') {
-                if (itemSearchInput.value.length >= 3) {
-                     itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
-                }
-            }
-        });
-    }
-
     searchForeignCheckbox.addEventListener('change', (e) => {
         searchSettings.foreign = e.target.checked;
-        if (itemSearchInput.value.length >= 3) itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
+        itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
         captureState();
     });
     searchLocalCheckbox.addEventListener('change', (e) => {
         searchSettings.local = e.target.checked;
-        if (itemSearchInput.value.length >= 3) itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
+        itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
         captureState();
     });
     
@@ -2188,5 +2259,5 @@ function initializeOfferModule(deps) {
     setupColumnsDropdown();
     setupSortDropdown();
     resetOfferState();
-    loadSheetFilters();
+    loadAndRenderFilters(); // NEW: Load filters on initialization
 }
