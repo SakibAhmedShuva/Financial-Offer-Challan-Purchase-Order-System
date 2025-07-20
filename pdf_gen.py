@@ -124,7 +124,7 @@ class PDF(FPDF):
                     self.set_text_color(r, g, b)
             elif part.startswith('</font>'): self.set_text_color(0, 0, 0)
             else:
-                text = part.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').encode('latin-1', 'replace').decode('latin-1')
+                text = part.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').replace('&quot;', '"').encode('latin-1', 'replace').decode('latin-1')
                 self.write(cell_height, text)
     
     def add_signature_block(self, signature_image_path, include_signature=True):
@@ -832,7 +832,13 @@ def generate_challan_pdf(data, auth_dir, header_color_hex):
     pdf.alias_nb_pages()
     pdf.add_page()
     
-    sanitized_ref = sanitize_text(str(ref_number))
+    challan_only_number = str(ref_number)
+    if challan_only_number.startswith('DC_'):
+        parts = challan_only_number.split('_')
+        if len(parts) > 1:
+            challan_only_number = parts[1]
+    sanitized_ref = sanitize_text(challan_only_number)
+    
     sanitized_client_name = sanitize_text(client_info.get('name', 'N/A'))
     sanitized_client_address = sanitize_text(client_info.get('address', 'N/A'))
 
