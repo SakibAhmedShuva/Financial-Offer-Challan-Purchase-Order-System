@@ -598,6 +598,41 @@ def get_sheet_names():
         print(f"Error reading sheet names: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/get_filter_options', methods=['GET'])
+def get_filter_options():
+    filter_options = {
+        "product_type": [], "make": [], "approvals": [], "model": []
+    }
+    filter_columns = list(filter_options.keys())
+
+    files_to_process = [CONFIG['PRICE_LIST_FILE'], CONFIG['LOCAL_PRICE_LIST_FILE']]
+    
+    all_data_df = pd.DataFrame()
+
+    for file_path in files_to_process:
+        if os.path.exists(file_path):
+            try:
+                # Read all sheets from the Excel file
+                xls = pd.ExcelFile(file_path)
+                for sheet_name in xls.sheet_names:
+                    df = pd.read_excel(xls, sheet_name=sheet_name)
+                    # Normalize column names
+                    df.columns = [str(c).lower().strip() for c in df.columns]
+                    all_data_df = pd.concat([all_data_df, df], ignore_index=True)
+            except Exception as e:
+                print(f"Could not process {file_path} for filters: {e}")
+                continue
+    
+    if not all_data_df.empty:
+        for col in filter_columns:
+            if col in all_data_df.columns:
+                # Get unique non-null values, convert to string, and sort
+                unique_values = all_data_df[col].dropna().astype(str).unique()
+                filter_options[col] = sorted([v for v in unique_values if v.strip()])
+
+    return jsonify(filter_options)
+
+
 @app.route('/search_clients', methods=['GET'])
 def search_clients():
     query = request.args.get('q', '').lower()
@@ -611,28 +646,12 @@ def search_items():
     query = request.args.get('q', '').lower()
     role = request.args.get('role', 'user')
     source = request.args.get('source', 'all')
-    types = request.args.get('types', None)
-    selected_types = types.split(',') if types and types.strip() else []
 
-    if not query:
-        return jsonify([])
-
-    # Parse the query to separate positive and negative keywords
-    all_terms = query.split()
-    positive_query_parts = []
-    negative_keywords = []
-    
-    for term in all_terms:
-        if term.startswith('-') and len(term) > 1:
-            negative_keywords.append(term[1:])
-        else:
-            positive_query_parts.append(term)
-            
-    positive_query = " ".join(positive_query_parts)
-    positive_keywords = [word for word in re.split(r'[^a-z0-9]+', positive_query) if word]
-    
-    if not positive_keywords:
-        return jsonify([])
+    # New filter arguments
+    product_type_filter = [t.strip().lower() for t in request.args.get('product_type', '').split(',') if t]
+    make_filter = [t.strip().lower() for t in request.args.get('make', '').split(',') if t]
+    approvals_filter = [t.strip().lower() for t in request.args.get('approvals', '').split(',') if t]
+    model_filter = [t.strip().lower() for t in request.args.get('model', '').split(',') if t]
 
     # Get all items to search from foreign and/or local sources
     all_items_to_search = []
@@ -648,8 +667,46 @@ def search_items():
             item_copy['source_type'] = 'local'
             all_items_to_search.append(item_copy)
     
-    scored_results = []
+    # Apply categorical filters first
+    filtered_items = []
     for item in all_items_to_search:
+        # Check product_type
+        if product_type_filter and str(item.get('product_type', '')).lower() not in product_type_filter:
+            continue
+        # Check make
+        if make_filter and str(item.get('make', '')).lower() not in make_filter:
+            continue
+        # Check approvals
+        if approvals_filter and str(item.get('approvals', '')).lower() not in approvals_filter:
+            continue
+        # Check model
+        if model_filter and str(item.get('model', '')).lower() not in model_filter:
+            continue
+        filtered_items.append(item)
+    
+    if not query:
+        # If no search query, return the pre-filtered list
+        return jsonify(filtered_items)
+
+    # Parse the text query to separate positive and negative keywords
+    all_terms = query.split()
+    positive_query_parts = []
+    negative_keywords = []
+    
+    for term in all_terms:
+        if term.startswith('-') and len(term) > 1:
+            negative_keywords.append(term[1:])
+        else:
+            positive_query_parts.append(term)
+            
+    positive_query = " ".join(positive_query_parts)
+    positive_keywords = [word for word in re.split(r'[^a-z0-9]+', positive_query) if word]
+    
+    if not positive_keywords:
+        return jsonify(filtered_items)
+
+    scored_results = []
+    for item in filtered_items: # Search within the already filtered items
         target_text = item.get('search_text', '')
         
         # 1. Negative Filter: Skip item if it contains any negative keyword
@@ -671,10 +728,6 @@ def search_items():
     
     # Sort results
     sorted_results = sorted(scored_results, key=lambda x: (-x['relevance_score'], x['source_sort_key']))
-    
-    # Filter by sheet type if specified
-    if selected_types:
-        sorted_results = [item for item in sorted_results if item.get('product_type') in selected_types]
     
     if role != 'admin':
         for item in sorted_results:
