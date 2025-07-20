@@ -42,7 +42,7 @@ def parse_html_to_richtext(html_string):
                     if color_match: color = color_match.group(1)
                 else: color = "000000"
         else:
-            text = part.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+            text = part.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').replace('&quot;', '"')
             font_props = InlineFont()
             if is_bold:
                 font_props.b = True
@@ -823,7 +823,14 @@ def generate_challan_xlsx(data, auth_dir, header_color_hex):
     title_cell.fill = header_fill
     
     ws.append([])
-    ws.append([f"Challan No:", ref_number])
+    
+    challan_only_number = str(ref_number)
+    if challan_only_number.startswith('DC_'):
+        parts = challan_only_number.split('_')
+        if len(parts) > 1:
+            challan_only_number = parts[1]
+    ws.append([f"Challan No:", challan_only_number])
+
     challan_row_num = ws.max_row
     ws.cell(row=challan_row_num, column=1).font = table_header_font
     ws.cell(row=challan_row_num, column=2).alignment = left_align
