@@ -1348,7 +1348,7 @@ function initializeOfferModule(deps) {
         const panel = document.createElement('div');
         panel.className = 'filter-dropdown-panel hidden';
         panel.innerHTML = `
-            <input type="text" class="filter-search-input" placeholder="Search...">
+            <input type="text" class="filter-search-input" placeholder="Type to select...">
             <div class="filter-options-list"></div>
         `;
 
@@ -1386,7 +1386,28 @@ function initializeOfferModule(deps) {
             panel.classList.toggle('hidden');
         });
 
-        searchInput.addEventListener('input', () => renderOptions(searchInput.value));
+        // --- START MODIFICATION ---
+        searchInput.addEventListener('input', () => {
+            const searchText = searchInput.value;
+            // When user types in the filter search, automatically select all matching options
+            if (searchText.trim() !== '') {
+                const matchingOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
+                activeFilters[filterType] = matchingOptions;
+            } else {
+                // If the search is cleared, clear the selection for this filter
+                activeFilters[filterType] = [];
+            }
+            
+            // Re-render the options to show the new selection state
+            renderOptions(searchText);
+            
+            // Update the count badge on the filter button
+            updateBadge();
+            
+            // Trigger the main item search to apply the new filters
+            itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+        });
+        // --- END MODIFICATION ---
 
         optionsList.addEventListener('change', (e) => {
             if (e.target.type === 'checkbox') {
