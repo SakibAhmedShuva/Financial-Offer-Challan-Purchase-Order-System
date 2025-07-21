@@ -649,9 +649,12 @@ def search_items():
 
     # New filter arguments
     make_filter = [t.strip().lower() for t in request.args.get('make', '').split(',') if t]
-    make_filter = [t.strip().lower() for t in request.args.get('make', '').split(',') if t]
     approvals_filter = [t.strip().lower() for t in request.args.get('approvals', '').split(',') if t]
     model_filter = [t.strip().lower() for t in request.args.get('model', '').split(',') if t]
+    # --- START MODIFICATION ---
+    sheets_filter_str = request.args.get('sheets', '')
+    sheets_filter = [s.strip().lower() for s in sheets_filter_str.split(',') if s] if sheets_filter_str else []
+    # --- END MODIFICATION ---
 
     # Get all items to search from foreign and/or local sources
     all_items_to_search = []
@@ -670,9 +673,11 @@ def search_items():
     # Apply categorical filters first
     filtered_items = []
     for item in all_items_to_search:
-        # Check make
-        if make_filter and str(item.get('make', '')).lower() not in make_filter:
+        # --- START MODIFICATION ---
+        # Check sheet name
+        if sheets_filter and str(item.get('sheet_name', '')).lower() not in sheets_filter:
             continue
+        # --- END MODIFICATION ---
         # Check make
         if make_filter and str(item.get('make', '')).lower() not in make_filter:
             continue
