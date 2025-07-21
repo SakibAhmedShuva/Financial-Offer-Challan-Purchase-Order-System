@@ -701,16 +701,23 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         pdf.set_font('Arial', '', 11)
         pdf.cell(0, 7, sanitized_reference, 0, 1, 'L')
         
-        pdf.set_font('Arial', 'B', 11)
-        pdf.cell(pdf.get_string_width("Client: ") + 1, 7, "Client: ", 0, 0, 'L')
-        pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 7, sanitized_client_name, 0, 'L')
+        # --- START REPLACEMENT ---
+        # A more robust way to print label-value pairs for the header.
+        label_width = 20  # A fixed width for labels like "Client:", "Address:"
 
+        # Client line
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(pdf.get_string_width("Address: ") + 1, 7, "Address: ", 0, 0, 'L')
+        pdf.cell(label_width, 7, "Client:", 0, 0, 'L')
         pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 7, sanitized_client_address, 0, 'L')
+        pdf.multi_cell(0, 7, sanitized_client_name, 0, 'L') # multi_cell automatically moves to the next line
+
+        # Address line
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(label_width, 7, "Address:", 0, 0, 'L')
+        pdf.set_font('Arial', '', 11)
+        pdf.multi_cell(0, 7, sanitized_client_address, 0, 'L') # multi_cell automatically moves to the next line
         pdf.ln(10)
+        # --- END REPLACEMENT ---
         
         draw_boq_content(pdf, data, sections, visible_price_groups)
         draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only)
