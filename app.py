@@ -262,8 +262,8 @@ def update_excel_price(filepath, sheet_name, item_code, price_data):
             price_col_idx = header.index(price_data['price_column'])
             desc_col_idx = header.index('description')
             unit_col_idx = header.index('unit')
-            # Find product_type column, might not exist in all sheets
-            product_type_col_idx = header.index('product_type') if 'product_type' in header else -1
+            # Find make column, might not exist in all sheets
+            make_col_idx = header.index('make') if 'make' in header else -1
 
         except ValueError as e:
             return (False, f"Required column not found in sheet '{sheet_name}': {e}")
@@ -285,8 +285,8 @@ def update_excel_price(filepath, sheet_name, item_code, price_data):
             new_row_values[price_col_idx] = price_data['price_value']
             new_row_values[desc_col_idx] = price_data.get('description', '')
             new_row_values[unit_col_idx] = price_data.get('unit', 'Pcs')
-            if product_type_col_idx != -1:
-                new_row_values[product_type_col_idx] = price_data.get('product_type', 'MISC')
+            if make_col_idx != -1:
+                new_row_values[make_col_idx] = price_data.get('make', 'MISC')
             ws.append(new_row_values)
 
         wb.save(filepath)
@@ -601,7 +601,7 @@ def get_sheet_names():
 @app.route('/get_filter_options', methods=['GET'])
 def get_filter_options():
     filter_options = {
-        "product_type": [], "make": [], "approvals": [], "model": []
+        "make": [], "make": [], "approvals": [], "model": []
     }
     filter_columns = list(filter_options.keys())
 
@@ -648,7 +648,7 @@ def search_items():
     source = request.args.get('source', 'all')
 
     # New filter arguments
-    product_type_filter = [t.strip().lower() for t in request.args.get('product_type', '').split(',') if t]
+    make_filter = [t.strip().lower() for t in request.args.get('make', '').split(',') if t]
     make_filter = [t.strip().lower() for t in request.args.get('make', '').split(',') if t]
     approvals_filter = [t.strip().lower() for t in request.args.get('approvals', '').split(',') if t]
     model_filter = [t.strip().lower() for t in request.args.get('model', '').split(',') if t]
@@ -670,8 +670,8 @@ def search_items():
     # Apply categorical filters first
     filtered_items = []
     for item in all_items_to_search:
-        # Check product_type
-        if product_type_filter and str(item.get('product_type', '')).lower() not in product_type_filter:
+        # Check make
+        if make_filter and str(item.get('make', '')).lower() not in make_filter:
             continue
         # Check make
         if make_filter and str(item.get('make', '')).lower() not in make_filter:
@@ -845,23 +845,23 @@ def get_projects():
             project_type = data.get('projectType', 'offer')
             reference_number_display = data.get('referenceNumber', 'N/A')
             client_name_display = data.get('client', {}).get('name', 'N/A')
-            product_types_display = []
+            makes_display = []
 
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
-                cats = sorted(list(set(item.get('product_type', '') for item in data.get('items', []) if item.get('product_type'))))
+                cats = sorted(list(set(item.get('make', '') for item in data.get('items', []) if item.get('make'))))
                 cats_part = '_'.join(cats) if cats else 'MISC'
                 abbreviation = ''.join(word[0] for word in client_name.split()).upper()
                 client_part = ''.join(filter(str.isalnum, abbreviation))[:4]
                 date_part = datetime.fromisoformat(data.get('lastModified')).strftime('%d-%b-%Y')
                 reference_number_display = f"DC_{data.get('referenceNumber')}_{client_part}_{cats_part}_{date_part}"
-                product_types_display = cats
+                makes_display = cats
             elif project_type == 'ai_helper':
                 reference_number_display = f"[AI] {data.get('referenceNumber', 'Untitled')}"
                 client_name_display = "N/A"
-                product_types_display = ["AI Processed"]
+                makes_display = ["AI Processed"]
             else: 
-                product_types_display = sorted(list(set(item.get('product_type', 'N/A') for item in data.get('items', []))))
+                makes_display = sorted(list(set(item.get('make', 'N/A') for item in data.get('items', []))))
 
             if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
                 continue
@@ -871,7 +871,7 @@ def get_projects():
                 'referenceNumber': reference_number_display,
                 'clientName': client_name_display,
                 'dateModified': data.get('lastModified'),
-                'productTypes': ', '.join(product_types_display),
+                'productTypes': ', '.join(makes_display),
                 'status': data.get('status', 'Pending'),
                 'projectType': project_type,
                 **data 
@@ -1374,14 +1374,14 @@ def get_shared_projects():
             if os.path.exists(project_filepath):
                 with open(project_filepath, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    product_types = sorted(list(set(item.get('product_type', 'N/A') for item in data.get('items', []))))
+                    makes = sorted(list(set(item.get('make', 'N/A') for item in data.get('items', []))))
                     shared_projects.append({
                         'sl': len(shared_projects) + 1,
                         'projectId': data.get('projectId'),
                         'referenceNumber': data.get('referenceNumber'),
                         'clientName': data.get('client', {}).get('name', 'N/A'),
                         'dateModified': data.get('lastModified'),
-                        'productTypes': ', '.join(product_types),
+                        'productTypes': ', '.join(makes),
                         'status': data.get('status', 'Pending'),
                         'owner_email': data.get('owner_email'),
                         'projectType': data.get('projectType', 'offer'),
@@ -1545,7 +1545,7 @@ def update_master_price():
     price_type = data.get('priceType')
     price_value = safe_float(data.get('priceValue'))
     source_type = data.get('sourceType')
-    product_type = data.get('productType', 'MISC')
+    make = data.get('productType', 'MISC')
 
     if not item_code:
         return jsonify({'success': False, 'message': 'Item Code is required to update the master list.'}), 400
@@ -1575,10 +1575,10 @@ def update_master_price():
         'price_value': value_to_save,
         'description': data.get('description'),
         'unit': data.get('unit'),
-        'product_type': product_type
+        'make': make
     }
 
-    success, message = update_excel_price(filepath, product_type, item_code, price_data)
+    success, message = update_excel_price(filepath, make, item_code, price_data)
 
     if success:
         log_activity(admin_email, "Master Price Update", f"Updated {item_code} to {value_to_save}", "N/A")
