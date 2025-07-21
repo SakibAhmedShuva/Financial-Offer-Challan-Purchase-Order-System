@@ -18,7 +18,7 @@ function initializeOfferModule(deps) {
     
     // NEW: State for advanced filters
     let filterOptions = {};
-    let activeFilters = { product_type: [], make: [], approvals: [], model: [] };
+    let activeFilters = { make: [], make: [], approvals: [], model: [] };
 
 
     const getDefaultFinancialLabels = () => ({
@@ -327,7 +327,7 @@ function initializeOfferModule(deps) {
 
         const scopes = {};
         offerItems.forEach(item => {
-            const type = item.product_type || 'MISC';
+            const type = item.make || 'MISC';
             const foreignValue = parseFloat(item.foreign_total_usd || 0);
             const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
             const installationValue = parseFloat(item.installation_total_bdt || 0);
@@ -562,10 +562,10 @@ function initializeOfferModule(deps) {
 
         switch (currentSortOrder) {
             case 'category_asc':
-                indexedItems.sort((a, b) => (a.item.product_type || '').localeCompare(b.item.product_type || ''));
+                indexedItems.sort((a, b) => (a.item.make || '').localeCompare(b.item.make || ''));
                 break;
             case 'category_desc':
-                indexedItems.sort((a, b) => (b.item.product_type || '').localeCompare(a.item.product_type || ''));
+                indexedItems.sort((a, b) => (b.item.make || '').localeCompare(a.item.make || ''));
                 break;
             case 'source_foreign':
                 indexedItems.sort((a, b) => {
@@ -837,7 +837,7 @@ function initializeOfferModule(deps) {
                                    data-price-value="${unitPrice.toFixed(2)}"
                                    data-description="${htmlToText(item.description)}"
                                    data-unit="${item.unit || 'Pcs'}"
-                                   data-product-type="${item.product_type || 'MISC'}"
+                                   data-product-type="${item.make || 'MISC'}"
                                    data-source-type="${item.source_type || 'local'}"
                            ><i class="fas fa-save"></i></button>`
                         : '';
@@ -850,12 +850,12 @@ function initializeOfferModule(deps) {
 
             rowHTML += `
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 align-middle">
-                    <select data-field="product_type" class="w-full p-1 bg-transparent dark:bg-slate-700 rounded border-slate-300 dark:border-slate-600 focus:ring-sky-500 text-center">
-                        <option value="FDS" ${item.product_type === 'FDS' ? 'selected' : ''}>FDS</option>
-                        <option value="FPS" ${item.product_type === 'FPS' ? 'selected' : ''}>FPS</option>
-                        <option value="FD" ${item.product_type === 'FD' ? 'selected' : ''}>FD</option>
-                        <option value="FC" ${item.product_type === 'FC' ? 'selected' : ''}>FC</option>
-                        <option value="MISC" ${item.product_type === 'MISC' ? 'selected' : ''}>MISC</option>
+                    <select data-field="make" class="w-full p-1 bg-transparent dark:bg-slate-700 rounded border-slate-300 dark:border-slate-600 focus:ring-sky-500 text-center">
+                        <option value="FDS" ${item.make === 'FDS' ? 'selected' : ''}>FDS</option>
+                        <option value="FPS" ${item.make === 'FPS' ? 'selected' : ''}>FPS</option>
+                        <option value="FD" ${item.make === 'FD' ? 'selected' : ''}>FD</option>
+                        <option value="FC" ${item.make === 'FC' ? 'selected' : ''}>FC</option>
+                        <option value="MISC" ${item.make === 'MISC' ? 'selected' : ''}>MISC</option>
                     </select>
                 </td>
                 <td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-1">
@@ -872,7 +872,7 @@ function initializeOfferModule(deps) {
 
     const renderOfferCategoryCheckboxes = (savedCategories = null) => {
         const allCategories = ['FDS', 'FPS', 'FD', 'FC'];
-        const categoriesToRender = savedCategories !== null ? savedCategories : [...new Set(offerItems.map(item => item.product_type))];
+        const categoriesToRender = savedCategories !== null ? savedCategories : [...new Set(offerItems.map(item => item.make))];
         if (offerCategoryCheckboxes) {
             offerCategoryCheckboxes.innerHTML = allCategories.map(cat => {
                 const checked = categoriesToRender.includes(cat) ? 'checked' : '';
@@ -1058,7 +1058,7 @@ function initializeOfferModule(deps) {
         }
 
         const clientNameParts = selectedClient.name.toLowerCase().split(' ').filter(p => p.length > 2);
-        const categories = [...new Set(offerItems.map(item => item.product_type))].map(c => c.toLowerCase());
+        const categories = [...new Set(offerItems.map(item => item.make))].map(c => c.toLowerCase());
         
         try {
             const res = await fetch(`${API_URL}/get_covers`);
@@ -1239,7 +1239,7 @@ function initializeOfferModule(deps) {
             
             const summaryScopes = {};
             offerItems.forEach(item => {
-                const type = item.product_type || 'MISC';
+                const type = item.make || 'MISC';
                 const foreignValue = parseFloat(item.foreign_total_usd || 0);
                 const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
                 const installationValue = parseFloat(item.installation_total_bdt || 0);
@@ -1547,7 +1547,7 @@ function initializeOfferModule(deps) {
                 installation_total_bdt: '0.00',
                 isCustom: {},
                 source_type: 'local', 
-                product_type: 'FPS'
+                make: 'FPS'
             };
             offerItems.push(newItem);
 
@@ -1876,7 +1876,7 @@ function initializeOfferModule(deps) {
             }
     
             updateFinancialSummary(); 
-            if(field === 'product_type') {
+            if(field === 'make') {
                 renderFinancialSummaryUI();
             }
             captureState();
@@ -1932,7 +1932,7 @@ function initializeOfferModule(deps) {
                 foreign_price_usd: '0.00', foreign_total_usd: '0.00',
                 local_supply_price_bdt: '0.00', local_supply_total_bdt: '0.00',
                 installation_price_bdt: '0.00', installation_total_bdt: '0.00',
-                isCustom: {}, source_type: 'local', product_type: 'MISC'
+                isCustom: {}, source_type: 'local', make: 'MISC'
             };
             offerItems.splice(itemIndex + 1, 0, newItem);
         }
