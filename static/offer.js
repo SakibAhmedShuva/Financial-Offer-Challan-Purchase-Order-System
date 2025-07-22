@@ -16,9 +16,10 @@ function initializeOfferModule(deps) {
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
     
-    // NEW: State for advanced filters
+    // --- START MODIFICATION ---
     let filterOptions = {};
-    let activeFilters = { make: [], make: [], approvals: [], model: [] };
+    let activeFilters = { make: [], approvals: [], model: [], sheets: [] };
+    // --- END MODIFICATION ---
 
 
     const getDefaultFinancialLabels = () => ({
@@ -1332,7 +1333,7 @@ function initializeOfferModule(deps) {
         }
     });
 
-    // NEW: Function to create a searchable dropdown filter
+    // --- START MODIFICATION ---
     const createFilterDropdown = (filterType, options) => {
         const container = document.createElement('div');
         container.className = 'filter-dropdown-container';
@@ -1386,7 +1387,6 @@ function initializeOfferModule(deps) {
             panel.classList.toggle('hidden');
         });
 
-        // --- START MODIFICATION ---
         searchInput.addEventListener('input', () => {
             const searchText = searchInput.value;
             // When user types in the filter search, automatically select all matching options
@@ -1407,13 +1407,14 @@ function initializeOfferModule(deps) {
             // Trigger the main item search to apply the new filters
             itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
         });
-        // --- END MODIFICATION ---
 
         optionsList.addEventListener('change', (e) => {
             if (e.target.type === 'checkbox') {
                 const value = e.target.value;
                 if (e.target.checked) {
-                    activeFilters[filterType].push(value);
+                    if (!activeFilters[filterType].includes(value)) {
+                        activeFilters[filterType].push(value);
+                    }
                 } else {
                     activeFilters[filterType] = activeFilters[filterType].filter(v => v !== value);
                 }
@@ -1431,18 +1432,45 @@ function initializeOfferModule(deps) {
         };
     };
 
+    const loadAndRenderSheetFilter = async () => {
+        try {
+            const res = await fetch(`${API_URL}/get_sheet_names`);
+            if (!res.ok) throw new Error('Failed to load sheet names');
+            const sheetNames = await res.json();
+            
+            if (sheetNames.length > 0) {
+                activeFilters.sheets = [...sheetNames]; // Default to all selected
+                createFilterDropdown('sheets', sheetNames);
+                
+                // Manually update the badge for the newly created filter
+                const sheetFilterContainer = Array.from(excelFiltersContainer.querySelectorAll('.filter-dropdown-container')).pop();
+                if (sheetFilterContainer) {
+                    const badge = sheetFilterContainer.querySelector('.filter-count-badge');
+                    const button = sheetFilterContainer.querySelector('.filter-dropdown-btn');
+                    if (badge && button) {
+                        badge.textContent = activeFilters.sheets.length;
+                        badge.classList.remove('hidden');
+                        button.classList.add('active');
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading sheet filter:', error);
+            // Optionally, add an error message to the UI
+        }
+    };
+    // --- END MODIFICATION ---
+
     const loadAndRenderFilters = async () => {
         try {
             const res = await fetch(`${API_URL}/get_filter_options`);
             if (!res.ok) throw new Error('Failed to load filter options');
             filterOptions = await res.json();
             
-            // Clear existing filters
             while (excelFiltersContainer.children.length > 1) {
                 excelFiltersContainer.removeChild(excelFiltersContainer.lastChild);
             }
 
-            // Create new filters
             for (const [type, options] of Object.entries(filterOptions)) {
                 if (options.length > 0) {
                     createFilterDropdown(type, options);
@@ -1543,7 +1571,6 @@ function initializeOfferModule(deps) {
                 cleanupSuggestions();
             }
          }
-         // NEW: Close filter panels on outside click
         if (!e.target.closest('.filter-dropdown-container')) {
             document.querySelectorAll('.filter-dropdown-panel').forEach(p => p.classList.add('hidden'));
         }
