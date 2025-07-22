@@ -234,10 +234,10 @@ def add_tnc_to_pdf(pdf, tnc_text):
         elif sanitized_line.startswith('-'):
             pdf.set_font('Arial', '', 9)
             pdf.cell(5)
-            pdf.multi_cell(0, 4, sanitized_line, 0, 'L')
+            pdf.multi_cell(0, 4, sanitized_line, 0, 'L', ln=1)
         else:
             pdf.set_font('Arial', '', 9)
-            pdf.multi_cell(0, 4, sanitized_line, 0, 'L')
+            pdf.multi_cell(0, 4, sanitized_line, 0, 'L', ln=1)
 
 def draw_boq_content(pdf, data, sections, visible_price_groups):
     items = data.get('items', [])
@@ -760,7 +760,7 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     pdf.is_tnc_page = False
     pdf.is_summary_page = False
 
-    return pdf.output(dest='S').encode('latin-1')
+    return pdf.output(dest='S')
 
 def generate_purchase_order_pdf(po_data, auth_dir, header_color_hex):
     items, project_info, financials = po_data.get('items', []), po_data.get('project_info', {}), po_data.get('financials', {})
@@ -826,7 +826,7 @@ def generate_purchase_order_pdf(po_data, auth_dir, header_color_hex):
     signature_image_path = os.path.join(auth_dir, 'Signature_SHF.jpg')
     pdf.add_signature_block(signature_image_path)
 
-    return pdf.output(dest='S').encode('latin-1')
+    return pdf.output(dest='S')
 
 
 def generate_challan_pdf(data, auth_dir, header_color_hex):
@@ -944,4 +944,4 @@ def generate_challan_pdf(data, auth_dir, header_color_hex):
     pdf.set_x(right_col_x_start)
     pdf.cell(col_width, 5, 'Authorized Signature', 0, 1, 'R')
     
-    return pdf.output(dest='S').encode('latin-1')
+    return pdf.output(dest='S')
