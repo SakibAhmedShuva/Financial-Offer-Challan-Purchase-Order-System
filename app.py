@@ -828,6 +828,10 @@ def save_project():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# app.py
+
+# app.py
+
 @app.route('/projects', methods=['GET'])
 def get_projects():
     user_email = request.args.get('email')
@@ -851,12 +855,14 @@ def get_projects():
             reference_number_display = data.get('referenceNumber', 'N/A')
             client_name_display = data.get('client', {}).get('name', 'N/A')
             makes_display = []
-
+            
+            # This block is now corrected to prevent the NameError
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
-                cats = sorted(list(set(item.get('make', '') for item in data.get('items', []) if item.get('make'))))
+                all_cats = set(i.get('make') for i in data.get('items', []))
+                cats = sorted([str(c) for c in all_cats if c]) # Correctly filter and sort
                 cats_part = '_'.join(cats) if cats else 'MISC'
-                abbreviation = ''.join(word[0] for word in client_name.split()).upper()
+                abbreviation = ''.join(word[0]for word in client_name.split()).upper()
                 client_part = ''.join(filter(str.isalnum, abbreviation))[:4]
                 date_part = datetime.fromisoformat(data.get('lastModified')).strftime('%d-%b-%Y')
                 reference_number_display = f"DC_{data.get('referenceNumber')}_{client_part}_{cats_part}_{date_part}"
@@ -866,7 +872,8 @@ def get_projects():
                 client_name_display = "N/A"
                 makes_display = ["AI Processed"]
             else: 
-                makes_display = sorted(list(set(item.get('make', 'N/A') for item in data.get('items', []))))
+                all_makes = set(i.get('make', 'N/A') for i in data.get('items', []))
+                makes_display = sorted([str(m) for m in all_makes if m]) # Correctly filter and sort
 
             if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
                 continue
