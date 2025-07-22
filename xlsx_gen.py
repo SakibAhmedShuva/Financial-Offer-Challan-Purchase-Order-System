@@ -75,12 +75,11 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
     
     headers_needing_space_before = [
         "Local Part (Supply):",
-        "Local Part (Installation):"
-    ]
-    headers_needing_space_after = [
+        "Local Part (Installation):",
         "Payment Schedule (Local Supply):",
         "Payment Schedule (Installation):"
     ]
+    headers_needing_space_after = []
 
 
     for line in tnc_text.split('\n'):
@@ -167,7 +166,7 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
     red_bold_font = Font(bold=True, color="FF0000")
     right_align = Alignment(horizontal='right', vertical='center')
     
-    summary_cell_coords = {} # To store coordinates like {'subtotal_foreign': 'F30'}
+    summary_cell_coords = {} 
 
     value_cols = {}
     current_price_col_start = 5 
@@ -186,7 +185,7 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if total_col_idx:
                 col_letter = get_column_letter(total_col_idx)
                 subtotals[section['key']] = f"=SUM({col_letter}{item_start_row}:{col_letter}{item_end_row})"
-    else: # No items
+    else: 
         for section in visible_price_sections:
             subtotals[section['key']] = 0
 
@@ -224,7 +223,7 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if not col_idx or value is None: continue
             
             value_cell = ws.cell(row=current_row, column=col_idx, value=value)
-            summary_cell_coords[(label, key)] = value_cell.coordinate # Store coordinate
+            summary_cell_coords[(label, key)] = value_cell.coordinate 
             
             price_header_cell = ws.cell(row=header_row_2_num, column=col_idx-1)
             
@@ -244,10 +243,9 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                  cell.fill = header_fill
 
     # -- START OF FIX --
-    # First, add all the intermediate financial rows to the worksheet.
-    # This populates the summary_cell_coords dictionary.
+    subtotal_label = financial_labels.get('subtotalForeign', 'Sub Total:')
     if has_additional_charges:
-        add_financial_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotals, is_bold=True)
+        add_financial_row(subtotal_label, subtotals, is_bold=True)
         
         visible_section_keys = [s['key'] for s in visible_price_sections]
         is_foreign_visible_boq = 'foreign' in visible_section_keys
@@ -271,29 +269,23 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 'installation_price': -discount_install if discount_install > 0 else None
             }
             add_financial_row("Discount:", {k: v for k, v in discount_values.items() if v is not None}, is_red=True, is_bold=True)
-    else:
-        # If no charges, the subtotal is the only line before the grand total.
-        add_financial_row(financial_labels.get('subtotalForeign', 'Sub Total:'), subtotals, is_bold=True)
-
-    # Second, now that all component rows exist, calculate the Grand Total formula.
+    
     grand_totals = {}
     for section in visible_price_sections:
         key = section['key']
-        
         formula_parts = []
-        subtotal_label = financial_labels.get('subtotalForeign', 'Sub Total:')
+
         subtotal_coord = summary_cell_coords.get((subtotal_label, key))
         if subtotal_coord:
             formula_parts.append(subtotal_coord)
         else:
-            # Fallback if no subtotal row was added (e.g., no items)
-            formula_parts.append(f"({subtotals.get(key, '0')})")
-
+             formula_parts.append(f"({subtotals.get(key, '0')})")
+        
         if key == 'foreign':
             freight_coord = summary_cell_coords.get((financial_labels.get('freight', 'Freight:'), key))
             discount_coord = summary_cell_coords.get(("Discount:", key))
             if freight_coord: formula_parts.append(f"+{freight_coord}")
-            if discount_coord: formula_parts.append(f"{discount_coord}") # Discount is already negative, so we add it.
+            if discount_coord: formula_parts.append(f"+{discount_coord}")
         
         if key == 'local_supply_price':
             delivery_coord = summary_cell_coords.get((financial_labels.get('delivery', 'Delivery:'), key))
@@ -303,7 +295,7 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if delivery_coord: formula_parts.append(f"+{delivery_coord}")
             if vat_coord: formula_parts.append(f"+{vat_coord}")
             if ait_coord: formula_parts.append(f"+{ait_coord}")
-            if discount_coord: formula_parts.append(f"{discount_coord}")
+            if discount_coord: formula_parts.append(f"+{discount_coord}")
         
         if key == 'installation_price':
             discount_coord = summary_cell_coords.get(("Discount:", key))
@@ -315,13 +307,21 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 if delivery_coord: formula_parts.append(f"+{delivery_coord}")
                 if vat_coord: formula_parts.append(f"+{vat_coord}")
                 if ait_coord: formula_parts.append(f"+{ait_coord}")
-            if discount_coord: formula_parts.append(f"{discount_coord}")
+            if discount_coord: formula_parts.append(f"+{discount_coord}")
+        
+        if has_additional_charges:
+             grand_totals[key] = f"={ ''.join(formula_parts) }"
+        else: # If no extra charges, grand total is just the subtotal
+            grand_totals[key] = subtotals.get(key, '0')
 
-        grand_totals[key] = f"={ ''.join(formula_parts) }"
 
-    # Finally, add the Grand Total row using the correctly constructed formulas.
-    add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
+    if has_additional_charges:
+        add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
+    else:
+        # If there are no additional charges, the first row is the Grand Total
+        add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
     # -- END OF FIX --
+
 
 def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
     user_info, items = data.get('user', {}), data.get('items', [])
@@ -394,7 +394,6 @@ def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
             price_val = safe_float(item.get(section['sub'][0]['key'], 0))
             price_cell_coord = f"{get_column_letter(price_col_start_idx)}{ws.max_row + 1}"
             
-            # Add price value and formula for total
             row_data.append(price_val)
             row_data.append(f"={qty_cell_coord}*{price_cell_coord}")
             price_col_start_idx += 2
