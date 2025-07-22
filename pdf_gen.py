@@ -289,7 +289,7 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
         desc_lines = pdf.multi_cell(sections['base'][1]['width'], line_height, sanitized_desc_for_height_calc, 0, 'L', split_only=True)
         num_lines = len(desc_lines)
         # FIX: Reduced padding from +4 to +2
-        row_height = (num_lines * line_height) + 1
+        row_height = (num_lines * line_height) + 2
         
         if pdf.get_y() + row_height > pdf.page_break_trigger:
             pdf.add_page()
@@ -702,20 +702,21 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         pdf.cell(0, 7, sanitized_reference, 0, 1, 'L')
         
         # --- START REPLACEMENT ---
-        # A more robust way to print label-value pairs for the header.
         label_width = 20  # A fixed width for labels like "Client:", "Address:"
+        available_width = pdf.w - pdf.l_margin - pdf.r_margin
+        value_width = available_width - label_width
 
         # Client line
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(label_width, 7, "Client:", 0, 0, 'L')
         pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 7, sanitized_client_name, 0, 'L') # multi_cell automatically moves to the next line
+        pdf.multi_cell(value_width, 7, sanitized_client_name, 0, 'L', ln=1)
 
         # Address line
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(label_width, 7, "Address:", 0, 0, 'L')
         pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 7, sanitized_client_address, 0, 'L') # multi_cell automatically moves to the next line
+        pdf.multi_cell(value_width, 7, sanitized_client_address, 0, 'L', ln=1)
         pdf.ln(10)
         # --- END REPLACEMENT ---
         
