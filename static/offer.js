@@ -175,34 +175,33 @@ function initializeOfferModule(deps) {
             panel.classList.toggle('hidden');
         });
 
-//==================== START: PASTE THIS ENTIRE BLOCK ====================
-
-        // FIX: Reverted the search input listener to its original functionality
         searchInput.addEventListener('input', () => {
             const searchText = searchInput.value;
             const matchingOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
-
-            // Automatically select all matching options
             if (searchText.trim() !== '') {
                 activeFilters[filterKey] = matchingOptions;
             } else {
-                // If the search is cleared, revert to the user's manual selections
-                // To do this, we find all currently checked boxes
                 const checkedInputs = Array.from(optionsList.querySelectorAll('input[type="checkbox"]:checked'));
                 activeFilters[filterKey] = checkedInputs.map(input => input.value);
             }
-            
-            // Re-render the options to show the new selection state
             renderOptions(searchText);
-            
-            // Update the count badge on the filter button
             updateBadge();
-            
-            // Trigger the main item search to apply the new filters
             itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
         });
 
-//===================== END: PASTE THIS ENTIRE BLOCK =====================
+        // MODIFICATION: Add keydown listener for Enter key
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (searchInput.value.trim() === '') {
+                    activeFilters[filterKey] = [...options]; // Select all
+                    renderOptions(); 
+                    updateBadge();
+                    itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+                }
+                panel.classList.add('hidden');
+            }
+        });
 
         optionsList.addEventListener('change', (e) => {
             if (e.target.type === 'checkbox') {
@@ -215,7 +214,6 @@ function initializeOfferModule(deps) {
                     activeFilters[filterKey] = activeFilters[filterKey].filter(v => v !== value);
                 }
                 updateBadge();
-                // Trigger item search automatically
                 itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
             }
         });
@@ -229,7 +227,7 @@ function initializeOfferModule(deps) {
 
         updateBadge();
     };
-
+    
     const loadAndRenderProductTypeFilter = async () => {
         try {
             const res = await fetch(`${API_URL}/get_sheet_names`);
@@ -1473,7 +1471,7 @@ function initializeOfferModule(deps) {
             }
         }
     });
-    
+
     enableSummaryPageCheckbox.addEventListener('change', (e) => {
         isSummaryPageEnabled = e.target.checked;
         renderFinancialSummaryUI();
@@ -1765,7 +1763,7 @@ function initializeOfferModule(deps) {
     });
 
     createSearchHandler({
-        searchInput: itemSearchInput, resultsContainer: itemSearchResults, loaderElement: itemSearchLoader, apiEndpoint: `${API_URL}/search_items`, currentUser, minQueryLength: 0, // Search on empty query
+        searchInput: itemSearchInput, resultsContainer: itemSearchResults, loaderElement: itemSearchLoader, apiEndpoint: `${API_URL}/search_items`, currentUser, minQueryLength: 0,
         buildQuery: (query) => {
             let url = `q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local'}`;
             for (const [key, values] of Object.entries(activeFilters)) {
@@ -1867,7 +1865,6 @@ function initializeOfferModule(deps) {
             }
             
             const qty = parseFloat(item.qty || 1);
-            // FIX: Ensure all totals are recalculated unconditionally
             item.foreign_total_usd = (qty * parseFloat(item.foreign_price_usd || 0)).toFixed(2);
             item.local_supply_total_bdt = (qty * parseFloat(item.local_supply_price_bdt || 0)).toFixed(2);
             item.installation_total_bdt = (qty * parseFloat(item.installation_price_bdt || 0)).toFixed(2);
@@ -1880,7 +1877,6 @@ function initializeOfferModule(deps) {
             updateTotalCell('foreign_total_usd', item.foreign_total_usd, 'USD');
             updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt, 'BDT');
             updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
-            // FIX: Update the cell if it exists
             updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
             
             if(field.includes('price')) {
