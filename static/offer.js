@@ -16,10 +16,8 @@ function initializeOfferModule(deps) {
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
     
-    // --- START MODIFICATION ---
     let filterOptions = {};
-    let activeFilters = { make: [], approvals: [], model: [], sheets: [] };
-    // --- END MODIFICATION ---
+    let activeFilters = { make: [], approvals: [], model: [], product_type: [] };
 
 
     const getDefaultFinancialLabels = () => ({
@@ -111,7 +109,7 @@ function initializeOfferModule(deps) {
     const enableSummaryPageCheckbox = document.getElementById('enable-summary-page-checkbox');
     const financialSummaryContainer = document.getElementById('financial-summary-container');
     const includeSignatureCheckbox = document.getElementById('offer-add-signature');
-    const excelFiltersContainer = document.getElementById('offer-excel-filters'); // NEW
+    const excelFiltersContainer = document.getElementById('offer-excel-filters');
     const searchForeignCheckbox = document.getElementById('search-foreign');
     const searchLocalCheckbox = document.getElementById('search-local');
     const foreignSummaryBlock = document.getElementById('foreign-summary');
@@ -120,6 +118,149 @@ function initializeOfferModule(deps) {
     const installationSummaryBlock = document.getElementById('installation-summary');
     const adminToolsDiv = document.getElementById('admin-offer-tools');
     const autoFillBtn = document.getElementById('admin-autofill-prices-btn');
+
+    // --- HELPER FUNCTIONS ---
+
+    const createFilterDropdown = (filterKey, filterLabel, options) => {
+        const container = document.createElement('div');
+        container.className = 'filter-dropdown-container';
+
+        const button = document.createElement('button');
+        button.className = 'filter-dropdown-btn';
+        button.innerHTML = `
+            <span class="filter-label">${filterLabel}</span>
+            <span class="filter-count-badge hidden">0</span>
+            <i class="fas fa-chevron-down text-xs"></i>
+        `;
+
+        const panel = document.createElement('div');
+        panel.className = 'filter-dropdown-panel hidden';
+        panel.innerHTML = `
+            <input type="text" class="filter-search-input" placeholder="Search options...">
+            <div class="filter-options-list"></div>
+        `;
+
+        container.appendChild(button);
+        container.appendChild(panel);
+        excelFiltersContainer.appendChild(container);
+
+        const optionsList = panel.querySelector('.filter-options-list');
+        const searchInput = panel.querySelector('.filter-search-input');
+        const badge = button.querySelector('.filter-count-badge');
+
+        const renderOptions = (searchText = '') => {
+            optionsList.innerHTML = '';
+            const filteredOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
+            
+            filteredOptions.forEach(option => {
+                const optionEl = document.createElement('div');
+                optionEl.className = 'filter-option';
+                const isChecked = activeFilters[filterKey].includes(option);
+                const safeOptionId = option.replace(/[^a-zA-Z0-9]/g, '-');
+                optionEl.innerHTML = `
+                    <input type="checkbox" id="filter-${filterKey}-${safeOptionId}" value="${option}" ${isChecked ? 'checked' : ''}>
+                    <label for="filter-${filterKey}-${safeOptionId}">${option}</label>
+                `;
+                optionsList.appendChild(optionEl);
+            });
+        };
+
+        renderOptions();
+
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
+                if (p !== panel) p.classList.add('hidden');
+            });
+            panel.classList.toggle('hidden');
+        });
+
+//==================== START: PASTE THIS ENTIRE BLOCK ====================
+
+        // FIX: Reverted the search input listener to its original functionality
+        searchInput.addEventListener('input', () => {
+            const searchText = searchInput.value;
+            const matchingOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
+
+            // Automatically select all matching options
+            if (searchText.trim() !== '') {
+                activeFilters[filterKey] = matchingOptions;
+            } else {
+                // If the search is cleared, revert to the user's manual selections
+                // To do this, we find all currently checked boxes
+                const checkedInputs = Array.from(optionsList.querySelectorAll('input[type="checkbox"]:checked'));
+                activeFilters[filterKey] = checkedInputs.map(input => input.value);
+            }
+            
+            // Re-render the options to show the new selection state
+            renderOptions(searchText);
+            
+            // Update the count badge on the filter button
+            updateBadge();
+            
+            // Trigger the main item search to apply the new filters
+            itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+        });
+
+//===================== END: PASTE THIS ENTIRE BLOCK =====================
+
+        optionsList.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                const value = e.target.value;
+                if (e.target.checked) {
+                    if (!activeFilters[filterKey].includes(value)) {
+                        activeFilters[filterKey].push(value);
+                    }
+                } else {
+                    activeFilters[filterKey] = activeFilters[filterKey].filter(v => v !== value);
+                }
+                updateBadge();
+                // Trigger item search automatically
+                itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+            }
+        });
+        
+        const updateBadge = () => {
+            const count = activeFilters[filterKey].length;
+            badge.textContent = count;
+            badge.classList.toggle('hidden', count === 0);
+            button.classList.toggle('active', count > 0);
+        };
+
+        updateBadge();
+    };
+
+    const loadAndRenderProductTypeFilter = async () => {
+        try {
+            const res = await fetch(`${API_URL}/get_sheet_names`);
+            if (!res.ok) throw new Error('Failed to load product types');
+            const productTypes = await res.json();
+            
+            if (productTypes.length > 0) {
+                activeFilters.product_type = [...productTypes];
+                createFilterDropdown('product_type', 'Product Type', productTypes);
+            }
+        } catch (error) {
+            console.error('Error loading product type filter:', error);
+        }
+    };
+
+    const loadAndRenderFilters = async () => {
+        try {
+            const res = await fetch(`${API_URL}/get_filter_options`);
+            if (!res.ok) throw new Error('Failed to load filter options');
+            filterOptions = await res.json();
+            
+            for (const [key, options] of Object.entries(filterOptions)) {
+                if (options.length > 0) {
+                    createFilterDropdown(key, key.charAt(0).toUpperCase() + key.slice(1), options);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading filters:', error);
+            excelFiltersContainer.innerHTML += `<p class="text-xs text-red-500">Could not load filters.</p>`;
+        }
+    };
 
     const htmlToText = (html) => {
         const temp = document.createElement('div');
@@ -649,7 +790,7 @@ function initializeOfferModule(deps) {
             items.slice(0, 10).forEach(item => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'search-result-item cursor-pointer p-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600 border-b border-slate-200 dark:border-slate-700 whitespace-normal';
-                itemDiv.innerHTML = item.description; // MODIFIED: Use innerHTML to render rich text
+                itemDiv.innerHTML = item.description;
                 itemDiv.onclick = () => {
                     const row = targetCell.closest('tr');
                     const itemIndex = parseInt(row.dataset.itemIndex, 10);
@@ -1332,155 +1473,6 @@ function initializeOfferModule(deps) {
             }
         }
     });
-
-    // --- START MODIFICATION ---
-    const createFilterDropdown = (filterType, options) => {
-        const container = document.createElement('div');
-        container.className = 'filter-dropdown-container';
-
-        const button = document.createElement('button');
-        button.className = 'filter-dropdown-btn';
-        button.innerHTML = `
-            <span class="filter-label">${filterType.replace('_', ' ')}</span>
-            <span class="filter-count-badge hidden">0</span>
-            <i class="fas fa-chevron-down text-xs"></i>
-        `;
-
-        const panel = document.createElement('div');
-        panel.className = 'filter-dropdown-panel hidden';
-        panel.innerHTML = `
-            <input type="text" class="filter-search-input" placeholder="Type to select...">
-            <div class="filter-options-list"></div>
-        `;
-
-        container.appendChild(button);
-        container.appendChild(panel);
-        excelFiltersContainer.appendChild(container);
-
-        const optionsList = panel.querySelector('.filter-options-list');
-        const searchInput = panel.querySelector('.filter-search-input');
-        const badge = button.querySelector('.filter-count-badge');
-
-        const renderOptions = (searchText = '') => {
-            optionsList.innerHTML = '';
-            const filteredOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
-            
-            filteredOptions.forEach(option => {
-                const optionEl = document.createElement('div');
-                optionEl.className = 'filter-option';
-                const isChecked = activeFilters[filterType].includes(option);
-                optionEl.innerHTML = `
-                    <input type="checkbox" id="filter-${filterType}-${option}" value="${option}" ${isChecked ? 'checked' : ''}>
-                    <label for="filter-${filterType}-${option}">${option}</label>
-                `;
-                optionsList.appendChild(optionEl);
-            });
-        };
-
-        renderOptions();
-
-        button.addEventListener('click', (e) => {
-            e.stopPropagation();
-            document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
-                if (p !== panel) p.classList.add('hidden');
-            });
-            panel.classList.toggle('hidden');
-        });
-
-        searchInput.addEventListener('input', () => {
-            const searchText = searchInput.value;
-            // When user types in the filter search, automatically select all matching options
-            if (searchText.trim() !== '') {
-                const matchingOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
-                activeFilters[filterType] = matchingOptions;
-            } else {
-                // If the search is cleared, clear the selection for this filter
-                activeFilters[filterType] = [];
-            }
-            
-            // Re-render the options to show the new selection state
-            renderOptions(searchText);
-            
-            // Update the count badge on the filter button
-            updateBadge();
-            
-            // Trigger the main item search to apply the new filters
-            itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
-        });
-
-        optionsList.addEventListener('change', (e) => {
-            if (e.target.type === 'checkbox') {
-                const value = e.target.value;
-                if (e.target.checked) {
-                    if (!activeFilters[filterType].includes(value)) {
-                        activeFilters[filterType].push(value);
-                    }
-                } else {
-                    activeFilters[filterType] = activeFilters[filterType].filter(v => v !== value);
-                }
-                updateBadge();
-                // Trigger item search automatically
-                itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
-            }
-        });
-        
-        const updateBadge = () => {
-            const count = activeFilters[filterType].length;
-            badge.textContent = count;
-            badge.classList.toggle('hidden', count === 0);
-            button.classList.toggle('active', count > 0);
-        };
-    };
-
-    const loadAndRenderSheetFilter = async () => {
-        try {
-            const res = await fetch(`${API_URL}/get_sheet_names`);
-            if (!res.ok) throw new Error('Failed to load sheet names');
-            const sheetNames = await res.json();
-            
-            if (sheetNames.length > 0) {
-                activeFilters.sheets = [...sheetNames]; // Default to all selected
-                createFilterDropdown('sheets', sheetNames);
-                
-                // Manually update the badge for the newly created filter
-                const sheetFilterContainer = Array.from(excelFiltersContainer.querySelectorAll('.filter-dropdown-container')).pop();
-                if (sheetFilterContainer) {
-                    const badge = sheetFilterContainer.querySelector('.filter-count-badge');
-                    const button = sheetFilterContainer.querySelector('.filter-dropdown-btn');
-                    if (badge && button) {
-                        badge.textContent = activeFilters.sheets.length;
-                        badge.classList.remove('hidden');
-                        button.classList.add('active');
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error loading sheet filter:', error);
-            // Optionally, add an error message to the UI
-        }
-    };
-    // --- END MODIFICATION ---
-
-    const loadAndRenderFilters = async () => {
-        try {
-            const res = await fetch(`${API_URL}/get_filter_options`);
-            if (!res.ok) throw new Error('Failed to load filter options');
-            filterOptions = await res.json();
-            
-            while (excelFiltersContainer.children.length > 1) {
-                excelFiltersContainer.removeChild(excelFiltersContainer.lastChild);
-            }
-
-            for (const [type, options] of Object.entries(filterOptions)) {
-                if (options.length > 0) {
-                    createFilterDropdown(type, options);
-                }
-            }
-        } catch (error) {
-            console.error('Error loading filters:', error);
-            excelFiltersContainer.innerHTML += `<p class="text-xs text-red-500">Could not load filters.</p>`;
-        }
-    };
     
     enableSummaryPageCheckbox.addEventListener('change', (e) => {
         isSummaryPageEnabled = e.target.checked;
@@ -1619,20 +1611,24 @@ function initializeOfferModule(deps) {
     }
 
     financialsSection.addEventListener('paste', e => {
-        if (e.target.matches('input[type="number"]')) {
+        if (e.target.matches('input[type="number"], [contenteditable=true]')) {
             e.preventDefault();
             const text = (e.clipboardData || window.clipboardData).getData('text');
-            const sanitizedText = text.replace(/,/g, '');
+            const sanitizedText = text.replace(/[^0-9.]/g, '');
 
-            const input = e.target;
-            const start = input.selectionStart;
-            const end = input.selectionEnd;
-            const oldValue = input.value;
-            const newValue = oldValue.substring(0, start) + sanitizedText + oldValue.substring(end);
+            if (e.target.isContentEditable) {
+                document.execCommand('insertText', false, sanitizedText);
+            } else {
+                 const input = e.target;
+                const start = input.selectionStart;
+                const end = input.selectionEnd;
+                const oldValue = input.value;
+                const newValue = oldValue.substring(0, start) + sanitizedText + oldValue.substring(end);
 
-            if (!isNaN(newValue) && newValue !== '') {
-                input.value = newValue;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
+                if (!isNaN(newValue) && newValue !== '') {
+                    input.value = newValue;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
             }
         }
     });
@@ -2307,5 +2303,6 @@ function initializeOfferModule(deps) {
     setupColumnsDropdown();
     setupSortDropdown();
     resetOfferState();
-    loadAndRenderFilters(); // NEW: Load filters on initialization
+    loadAndRenderFilters();
+    loadAndRenderProductTypeFilter();
 }
