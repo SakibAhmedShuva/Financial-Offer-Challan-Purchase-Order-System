@@ -11,7 +11,8 @@ function initializePurchaseOrderModule(deps) {
     let activeDescriptionCell = null;
     let activeScrollListener = null;
     let activeKeydownHandler = null;
-    let draggedItemIndex = null; // For drag and drop
+    let draggedItemIndex = null;
+    let activeFilters = { make: [], approvals: [], model: [], product_type: [] };
 
     // --- UNDO/REDO STATE ---
     let history = [];
@@ -43,6 +44,7 @@ function initializePurchaseOrderModule(deps) {
     };
 
     // --- DOM ELEMENTS ---
+    const excelFiltersContainer = document.getElementById('po-excel-filters');
     const newPOBtn = document.getElementById('po-new-btn');
     const clientSearchInput = document.getElementById('po-client-search-input'), clientSearchResults = document.getElementById('po-client-search-results'), selectedClientInfo = document.getElementById('po-selected-client-info');
     const itemSearchInput = document.getElementById('po-item-search-input'), itemSearchResults = document.getElementById('po-item-search-results'), itemSearchLoader = document.getElementById('po-item-search-loader');
@@ -53,11 +55,130 @@ function initializePurchaseOrderModule(deps) {
     const addCustomItemBtn = document.getElementById('po-add-custom-item-btn');
     const poProjectName = document.getElementById('po-project-name');
     const tncTextarea = document.getElementById('po-tnc-textarea');
-    const sheetFilterContainer = document.getElementById('po-sheet-filter-container');
     const searchForeignCheckbox = document.getElementById('po-search-foreign');
     const searchLocalCheckbox = document.getElementById('po-search-local');
     const sortToggleBtn = document.getElementById('po-sort-toggle-btn');
     const sortDropdown = document.getElementById('po-sort-dropdown');
+
+    const createFilterDropdown = (filterKey, filterLabel, options) => {
+        const container = document.createElement('div');
+        container.className = 'filter-dropdown-container';
+
+        const button = document.createElement('button');
+        button.className = 'filter-dropdown-btn';
+        button.innerHTML = `
+            <span class="filter-label">${filterLabel}</span>
+            <span class="filter-count-badge hidden">0</span>
+            <i class="fas fa-chevron-down text-xs"></i>
+        `;
+
+        const panel = document.createElement('div');
+        panel.className = 'filter-dropdown-panel hidden';
+        panel.innerHTML = `
+            <input type="text" class="filter-search-input" placeholder="Search options...">
+            <div class="filter-options-list"></div>
+        `;
+
+        container.appendChild(button);
+        container.appendChild(panel);
+        excelFiltersContainer.appendChild(container);
+
+        const optionsList = panel.querySelector('.filter-options-list');
+        const searchInput = panel.querySelector('.filter-search-input');
+        const badge = button.querySelector('.filter-count-badge');
+
+        const renderOptions = (searchText = '') => {
+            optionsList.innerHTML = '';
+            const filteredOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
+            
+            filteredOptions.forEach(option => {
+                const optionEl = document.createElement('div');
+                optionEl.className = 'filter-option';
+                const isChecked = activeFilters[filterKey].includes(option);
+                const safeOptionId = option.replace(/[^a-zA-Z0-9]/g, '-');
+                optionEl.innerHTML = `
+                    <input type="checkbox" id="filter-po-${filterKey}-${safeOptionId}" value="${option}" ${isChecked ? 'checked' : ''}>
+                    <label for="filter-po-${filterKey}-${safeOptionId}">${option}</label>
+                `;
+                optionsList.appendChild(optionEl);
+            });
+        };
+
+        renderOptions();
+
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
+                if (p !== panel) p.classList.add('hidden');
+            });
+            panel.classList.toggle('hidden');
+        });
+
+        searchInput.addEventListener('input', () => {
+            const searchText = searchInput.value;
+            const matchingOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
+            if (searchText.trim() !== '') {
+                activeFilters[filterKey] = matchingOptions;
+            } else {
+                const checkedInputs = Array.from(optionsList.querySelectorAll('input[type="checkbox"]:checked'));
+                activeFilters[filterKey] = checkedInputs.map(input => input.value);
+            }
+            renderOptions(searchText);
+            updateBadge();
+            itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+        });
+
+        optionsList.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                const value = e.target.value;
+                if (e.target.checked) {
+                    if (!activeFilters[filterKey].includes(value)) activeFilters[filterKey].push(value);
+                } else {
+                    activeFilters[filterKey] = activeFilters[filterKey].filter(v => v !== value);
+                }
+                updateBadge();
+                itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+            }
+        });
+        
+        const updateBadge = () => {
+            const count = activeFilters[filterKey].length;
+            badge.textContent = count;
+            badge.classList.toggle('hidden', count === 0);
+            button.classList.toggle('active', count > 0);
+        };
+        updateBadge();
+    };
+
+    const loadAndRenderProductTypeFilter = async () => {
+        try {
+            const res = await fetch(`${API_URL}/get_sheet_names`);
+            if (!res.ok) throw new Error('Failed to load product types');
+            const productTypes = await res.json();
+            if (productTypes.length > 0) {
+                activeFilters.product_type = [...productTypes];
+                createFilterDropdown('product_type', 'Product Type', productTypes);
+            }
+        } catch (error) {
+            console.error('Error loading product type filter:', error);
+        }
+    };
+
+    const loadAndRenderFilters = async () => {
+        try {
+            const res = await fetch(`${API_URL}/get_filter_options`);
+            if (!res.ok) throw new Error('Failed to load filter options');
+            const filterOptions = await res.json();
+            for (const [key, options] of Object.entries(filterOptions)) {
+                if (options.length > 0) {
+                    createFilterDropdown(key, key.charAt(0).toUpperCase() + key.slice(1), options);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading filters:', error);
+            excelFiltersContainer.innerHTML += `<p class="text-xs text-red-500">Could not load filters.</p>`;
+        }
+    };
 
     const cleanupSuggestions = () => {
         const dropdown = document.getElementById('po-description-suggestions');
@@ -332,7 +453,7 @@ function initializePurchaseOrderModule(deps) {
             items.slice(0, 10).forEach(item => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'search-result-item cursor-pointer p-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600 border-b border-slate-200 dark:border-slate-700 whitespace-normal';
-                itemDiv.innerHTML = item.description; // MODIFIED: Use innerHTML
+                itemDiv.innerHTML = item.description;
                 itemDiv.onclick = () => {
                     const row = targetCell.closest('tr');
                     const itemIndex = parseInt(row.dataset.itemIndex, 10);
@@ -399,9 +520,8 @@ function initializePurchaseOrderModule(deps) {
         descriptionSearchTimeout = setTimeout(async () => {
             if (cell !== activeDescriptionCell) return;
             try {
-                const selectedSheets = Array.from(sheetFilterContainer.querySelectorAll('input[name="sheet_filter"]:checked')).map(cb => cb.value).join(',');
                 const source = searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local';
-                const apiUrl = `${API_URL}/search_items?q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${source}&types=${encodeURIComponent(selectedSheets)}`;
+                const apiUrl = `${API_URL}/search_items?q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${source}`;
                 
                 const res = await fetch(apiUrl);
                 if (!res.ok) throw new Error('Search failed');
@@ -581,36 +701,6 @@ function initializePurchaseOrderModule(deps) {
         finally { button.innerHTML = fileType === 'pdf' ? '<i class="fa-solid fa-file-pdf"></i> PDF' : '<i class="fa-solid fa-file-excel"></i> Excel'; updatePOActionButtons(); }
     };
     
-    const loadSheetFilters = async () => {
-        try {
-            const response = await fetch(`${API_URL}/get_sheet_names`);
-            if (!response.ok) throw new Error('Failed to load sheet names');
-            const sheetNames = await response.json();
-
-            if (sheetFilterContainer) {
-                sheetFilterContainer.innerHTML = '';
-                if (sheetNames.length > 0) {
-                    sheetNames.forEach(name => {
-                        const div = document.createElement('div');
-                        div.className = 'flex items-center';
-                        div.innerHTML = `
-                            <input id="po-sheet-${name.replace(/\s/g, '-')}" type="checkbox" value="${name}" name="sheet_filter" class="h-4 w-4 text-sky-600 border-slate-300 dark:border-slate-600 rounded focus:ring-sky-500 bg-slate-100 dark:bg-slate-900" checked>
-                            <label for="po-sheet-${name.replace(/\s/g, '-')}" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">${name}</label>
-                        `;
-                        sheetFilterContainer.appendChild(div);
-                    });
-                } else {
-                    sheetFilterContainer.innerHTML = '<p class="text-slate-400 text-xs">No sheets found.</p>';
-                }
-            }
-        } catch (error) {
-            console.error('Error loading sheet filters:', error);
-            if (sheetFilterContainer) {
-                sheetFilterContainer.innerHTML = '<p class="text-red-500 text-xs">Error loading sheets.</p>';
-            }
-        }
-    };
-
     const setupFinancialsUI = () => {
         const allToggles = [
             { useKey: 'use_freight_usd', type: 'freight_usd' },
@@ -759,11 +849,13 @@ function initializePurchaseOrderModule(deps) {
     createSearchHandler({
         searchInput: itemSearchInput, resultsContainer: itemSearchResults, loaderElement: itemSearchLoader, apiEndpoint: `${API_URL}/search_items`, currentUser, minQueryLength: 3,
         buildQuery: (query) => {
-            const selectedSheets = Array.from(sheetFilterContainer.querySelectorAll('input[name="sheet_filter"]:checked'))
-                                        .map(cb => cb.value)
-                                        .join(',');
-
-            return `q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local'}&types=${encodeURIComponent(selectedSheets)}`;
+            let url = `q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local'}`;
+            for (const [key, values] of Object.entries(activeFilters)) {
+                if (values.length > 0) {
+                    url += `&${key}=${encodeURIComponent(values.join(','))}`;
+                }
+            }
+            return url;
         },
         renderResults: renderItemResults,
         onResultSelected: (item) => {
@@ -783,16 +875,6 @@ function initializePurchaseOrderModule(deps) {
             captureState();
         }
     });
-    
-    if (sheetFilterContainer) {
-        sheetFilterContainer.addEventListener('change', (e) => {
-            if (e.target.name === 'sheet_filter') {
-                if (itemSearchInput.value.length >= 3) {
-                     itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
-                }
-            }
-        });
-    }
 
     searchForeignCheckbox.addEventListener('change', (e) => {
         searchSettings.foreign = e.target.checked;
@@ -826,7 +908,7 @@ function initializePurchaseOrderModule(deps) {
         if (field) {
             if (field === 'description') {
                 handleDescriptionInput(e);
-                item.description = target.innerHTML; // Changed from innerText to save HTML
+                item.description = target.innerHTML;
             } else {
                 item[field] = target.matches('[contenteditable]') ? target.innerHTML : target.value;
             }
@@ -937,7 +1019,6 @@ function initializePurchaseOrderModule(deps) {
         }
     });
     
-    // Drag and Drop Listeners
     poTableBody.addEventListener('dragstart', (e) => {
         const handle = e.target.closest('.move-handle');
         if (handle) {
@@ -1068,5 +1149,6 @@ function initializePurchaseOrderModule(deps) {
     };
 
     resetPOState();
-    loadSheetFilters();
+    loadAndRenderFilters();
+    loadAndRenderProductTypeFilter();
 }
