@@ -108,6 +108,19 @@ function initializeChallanModule(deps) {
             itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
         });
 
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (searchInput.value.trim() === '') {
+                    activeFilters[filterKey] = [...options];
+                    renderOptions(); 
+                    updateBadge();
+                    itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
+                }
+                panel.classList.add('hidden');
+            }
+        });
+
         optionsList.addEventListener('change', (e) => {
             if (e.target.type === 'checkbox') {
                 const value = e.target.value;
