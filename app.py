@@ -601,7 +601,7 @@ def get_sheet_names():
 @app.route('/get_filter_options', methods=['GET'])
 def get_filter_options():
     filter_options = {
-        "make": [], "make": [], "approvals": [], "model": []
+        "make": [], "approvals": [], "model": []
     }
     filter_columns = list(filter_options.keys())
 
@@ -647,16 +647,16 @@ def search_items():
     role = request.args.get('role', 'user')
     source = request.args.get('source', 'all')
 
-    # New filter arguments
     make_filter = [t.strip().lower() for t in request.args.get('make', '').split(',') if t]
     approvals_filter = [t.strip().lower() for t in request.args.get('approvals', '').split(',') if t]
     model_filter = [t.strip().lower() for t in request.args.get('model', '').split(',') if t]
+    
     # --- START MODIFICATION ---
-    sheets_filter_str = request.args.get('sheets', '')
-    sheets_filter = [s.strip().lower() for s in sheets_filter_str.split(',') if s] if sheets_filter_str else []
+    # MODIFIED: Expect 'product_type' parameter for the new filter.
+    product_type_filter_str = request.args.get('product_type', '')
+    product_type_filter = [s.strip().lower() for s in product_type_filter_str.split(',') if s] if product_type_filter_str else []
     # --- END MODIFICATION ---
 
-    # Get all items to search from foreign and/or local sources
     all_items_to_search = []
     if source in ['foreign', 'all'] and item_searchable_data:
         for item in item_searchable_data:
@@ -675,7 +675,7 @@ def search_items():
     for item in all_items_to_search:
         # --- START MODIFICATION ---
         # Check sheet name
-        if sheets_filter and str(item.get('sheet_name', '')).lower() not in sheets_filter:
+        if product_type_filter and str(item.get('product_type', '')).lower() not in product_type_filter:
             continue
         # --- END MODIFICATION ---
         # Check make
