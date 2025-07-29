@@ -73,14 +73,18 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
     in_table, table_data = False, []
     tnc_headers = ["Foreign Part:", "Local Part (Supply):", "Local Part (Installation):"]
     
+    # --- CORRECTED LOGIC ---
     headers_needing_space_before = [
         "Local Part (Supply):",
         "Local Part (Installation):",
         "Payment Schedule (Local Supply):",
         "Payment Schedule (Installation):"
     ]
-    headers_needing_space_after = []
-
+    headers_needing_space_after = [
+        "Payment Schedule (Local Supply):",
+        "Payment Schedule (Installation):"
+    ]
+    # --- END CORRECTION ---
 
     for line in tnc_text.split('\n'):
         line = line.strip()
@@ -242,7 +246,6 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             if is_grand_total:
                  cell.fill = header_fill
 
-    # -- START OF FIX --
     subtotal_label = financial_labels.get('subtotalForeign', 'Sub Total:')
     if has_additional_charges:
         add_financial_row(subtotal_label, subtotals, is_bold=True)
@@ -311,16 +314,13 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
         
         if has_additional_charges:
              grand_totals[key] = f"={ ''.join(formula_parts) }"
-        else: # If no extra charges, grand total is just the subtotal
+        else:
             grand_totals[key] = subtotals.get(key, '0')
-
 
     if has_additional_charges:
         add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
     else:
-        # If there are no additional charges, the first row is the Grand Total
-        add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
-    # -- END OF FIX --
+        add_financial_row(grand_total_label, subtotals, is_grand_total=True)
 
 
 def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
