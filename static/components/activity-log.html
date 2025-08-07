@@ -1,0 +1,72 @@
+<div class="bg-white dark:bg-slate-800 shadow-md rounded-lg overflow-hidden">
+    <div class="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+                <h2 class="text-xl font-semibold text-slate-800 dark:text-white">All Projects Log</h2>
+                <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Admin view of all projects in the system.</p>
+            </div>
+        </div>
+        <!-- Filter Bar -->
+        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+            <div>
+                <label for="activity-log-search-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Search Ref/Client</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-search text-slate-400"></i>
+                    </div>
+                    <input id="activity-log-search-input" class="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 sm:text-sm" placeholder="Search..." type="search">
+                </div>
+            </div>
+            <div>
+                <label for="activity-log-user-filter" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Filter by User</label>
+                <select id="activity-log-user-filter" class="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 sm:text-sm">
+                    <option value="">All Users</option>
+                </select>
+            </div>
+            <div>
+                <label for="activity-log-type-filter" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Filter by Type</label>
+                <select id="activity-log-type-filter" class="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 sm:text-sm">
+                    <option value="">All Types</option>
+                    <option value="offer">Offer</option>
+                    <option value="challan">Challan</option>
+                    <option value="po">Purchase Order</option>
+                    <option value="ai_helper">AI Helper</option>
+                </select>
+            </div>
+            <div>
+                <label for="activity-log-sort-by" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Sort By</label>
+                <select id="activity-log-sort-by" class="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 sm:text-sm">
+                    <option value="date_desc">Date Modified (Newest)</option>
+                    <option value="date_asc">Date Modified (Oldest)</option>
+                    <option value="ref_asc">Reference (A-Z)</option>
+                    <option value="ref_desc">Reference (Z-A)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+            <thead class="text-xs text-slate-700 dark:text-slate-300 uppercase bg-slate-100 dark:bg-slate-700">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-center">Sl.</th>
+                    <th scope="col" class="px-6 py-3">Reference Number</th>
+                    <th scope="col" class="px-6 py-3 text-center no-wrap">Type</th>
+                    <th scope="col" class="px-6 py-3">User</th>
+                    <th scope="col" class="px-6 py-3">Date Modified</th>
+                    <th scope="col" class="px-6 py-3">Client Name</th>
+                    <th scope="col" class="px-6 py-3 text-center">Product Types</th>
+                    <th scope="col" class="px-6 py-3 text-center">Status</th>
+                    <th scope="col" class="px-6 py-3 text-center no-wrap">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="activity-log-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+            </tbody>
+        </table>
+        <div id="activity-log-placeholder" class="text-center py-10">
+            <div class="flex flex-col items-center">
+                <div class="loader"></div>
+                <p class="mt-4 font-semibold">Loading all projects...</p>
+            </div>
+        </div>
+    </div>
+</div>
