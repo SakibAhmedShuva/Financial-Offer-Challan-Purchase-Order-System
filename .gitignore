@@ -8,3 +8,4 @@ __pycache__
 data_storage
 test
 *copy*
+*.xlsx
