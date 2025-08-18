@@ -26,7 +26,7 @@ function initializeActivityLogModule(deps) {
 
         try {
             const [projectsRes, usersRes] = await Promise.all([
-                fetch(`${API_URL}/projects?email=${currentUser.email}&role=${currentUser.role}`),
+                fetch(`${API_URL}/all_projects_for_admin?role=${currentUser.role}`), // FIX: Call the new admin-only endpoint
                 fetch(`${API_URL}/get_all_users`)
             ]);
 
