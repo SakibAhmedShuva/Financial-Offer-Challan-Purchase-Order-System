@@ -16,6 +16,10 @@ function initializeOfferModule(deps) {
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
     
+    // --- NEW EXCEL-LIKE STATE ---
+    let activeCell = { row: -1, col: -1 };
+    let isEditing = false;
+    
     let filterOptions = {};
     let activeFilters = { make: [], approvals: [], model: [], product_type: [] };
 
@@ -189,6 +193,7 @@ function initializeOfferModule(deps) {
             itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
         });
 
+        // MODIFICATION: Add keydown listener for Enter key
         searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
