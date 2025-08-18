@@ -24,6 +24,12 @@
             </button>
             <p class="text-sm text-red-700 dark:text-red-300">This will attempt to fill in all missing/modified installation prices in the master price lists.</p>
         </div>
+        <!-- NEW: Custom Markup Input -->
+        <div class="flex items-center gap-4 mt-4">
+            <label for="admin-markup-input" class="text-sm font-medium text-red-700 dark:text-red-300">Custom Markup (%):</label>
+            <input type="number" id="admin-markup-input" class="w-24 p-2 bg-white dark:bg-slate-800 border border-red-300 dark:border-red-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="e.g., 5">
+            <p class="text-sm text-red-700 dark:text-red-300">Applies `PO PRICE * (1 + markup/100)` to `FOREIGN PRICE` for all items.</p>
+        </div>
     </div>
 
     <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
