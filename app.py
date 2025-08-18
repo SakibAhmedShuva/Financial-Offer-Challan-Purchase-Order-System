@@ -902,6 +902,73 @@ def get_projects():
         
     return jsonify(projects)
 
+# FIX: New dedicated endpoint for the admin Activity Log to fetch ALL projects
+@app.route('/all_projects_for_admin', methods=['GET'])
+def get_all_projects_for_admin():
+    user_email = request.args.get('email')
+    search_term = request.args.get('search', '').lower()
+    user_role = request.args.get('role')
+
+    if user_role != 'admin':
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    projects = []
+    for filename in os.listdir(CONFIG['PROJECTS_DIR']):
+        if not filename.endswith('.json'):
+            continue
+        try:
+            filepath = os.path.join(CONFIG['PROJECTS_DIR'], filename)
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # This endpoint intentionally does NOT filter by owner_email
+
+            project_type = data.get('projectType', 'offer')
+            reference_number_display = data.get('referenceNumber', 'N/A')
+            client_name_display = data.get('client', {}).get('name', 'N/A')
+            product_types_display = []
+            
+            if project_type == 'challan':
+                client_name = data.get('client', {}).get('name', 'NOCLIENT')
+                all_cats = set(i.get('make') for i in data.get('items', []))
+                cats = sorted([str(c) for c in all_cats if c])
+                cats_part = '_'.join(cats) if cats else 'MISC'
+                abbreviation = ''.join(word[0]for word in client_name.split()).upper()
+                client_part = ''.join(filter(str.isalnum, abbreviation))[:4]
+                date_part = datetime.fromisoformat(data.get('lastModified')).strftime('%d-%b-%Y')
+                reference_number_display = f"DC_{data.get('referenceNumber')}_{client_part}_{cats_part}_{date_part}"
+                product_types_display = cats
+            elif project_type == 'ai_helper':
+                reference_number_display = f"[AI] {data.get('referenceNumber', 'Untitled')}"
+                client_name_display = "N/A"
+                product_types_display = ["AI Processed"]
+            else: 
+                all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
+                product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
+
+            if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
+                continue
+
+            projects.append({
+                'projectId': data.get('projectId'),
+                'referenceNumber': reference_number_display,
+                'clientName': client_name_display,
+                'dateModified': data.get('lastModified'),
+                'productTypes': ', '.join(product_types_display),
+                'status': data.get('status', 'Pending'),
+                'projectType': project_type,
+                **data 
+            })
+        except Exception as e:
+            print(f"Error processing project file {filename}: {e}")
+            continue
+            
+    projects.sort(key=lambda p: p['dateModified'], reverse=True)
+    for i, p in enumerate(projects):
+        p['sl'] = i + 1
+        
+    return jsonify(projects)
+
 @app.route('/project/<project_id>', methods=['GET', 'DELETE'])
 def handle_project(project_id):
     user_email = request.args.get('email')
