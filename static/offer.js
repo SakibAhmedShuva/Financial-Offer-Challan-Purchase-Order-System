@@ -122,6 +122,7 @@ function initializeOfferModule(deps) {
     const installationSummaryBlock = document.getElementById('installation-summary');
     const adminToolsDiv = document.getElementById('admin-offer-tools');
     const autoFillBtn = document.getElementById('admin-autofill-prices-btn');
+    const adminMarkupInput = document.getElementById('admin-markup-input');
 
     // --- HELPER FUNCTIONS ---
 
@@ -420,13 +421,9 @@ function initializeOfferModule(deps) {
 
     // --- RENDER FUNCTIONS ---
     const checkAdminToolsVisibility = () => {
-        if (currentUser.role !== 'admin' || !adminToolsDiv) return;
-
-        const needsAttention = offerItems.some(item => 
-            item.isCustom && item.isCustom['installation_price_bdt']
-        );
-
-        adminToolsDiv.classList.toggle('hidden', !needsAttention);
+        if (!adminToolsDiv) return;
+        const isAdmin = currentUser.role === 'admin';
+        adminToolsDiv.classList.toggle('hidden', !isAdmin);
     };
 
     const updateInWordsSummary = async (usd, bdt) => {
@@ -966,7 +963,7 @@ function initializeOfferModule(deps) {
                     let priceCellClass = '';
                     let showSaveBtn = false;
 
-                    if (isModifiedPrice && (h.key === 'foreign_price' || h.key === 'installation_price')) {
+                    if (isModifiedPrice) {
                         priceCellClass = 'text-red-500 font-bold';
                     }
 
@@ -1464,6 +1461,37 @@ function initializeOfferModule(deps) {
     
     // --- EVENT LISTENERS ---
     
+    const applyCustomMarkup = () => {
+        if (currentUser.role !== 'admin' || !adminMarkupInput) return;
+
+        const markupPercent = parseFloat(adminMarkupInput.value);
+        
+        if (isNaN(markupPercent) || markupPercent < 0) {
+            return;
+        }
+
+        const markupFactor = 1 + (markupPercent / 100);
+
+        offerItems.forEach(item => {
+            const poPrice = parseFloat(item.po_price_usd || 0);
+
+            if (poPrice > 0) {
+                item.foreign_price_usd = (poPrice * markupFactor).toFixed(2);
+                
+                if (typeof item.isCustom !== 'object' || item.isCustom === null) {
+                    item.isCustom = {};
+                }
+                item.isCustom['foreign_price_usd'] = true;
+
+                const qty = parseFloat(item.qty || 1);
+                item.foreign_total_usd = (qty * parseFloat(item.foreign_price_usd)).toFixed(2);
+            }
+        });
+
+        renderOfferTable();
+        captureState();
+    };
+
     if (offerProjectName) {
         offerProjectName.addEventListener('blur', async () => {
             const newName = offerProjectName.textContent.trim();
@@ -2103,6 +2131,14 @@ function initializeOfferModule(deps) {
                 autoFillBtn.disabled = false;
                 autoFillBtn.innerHTML = '<i class="fas fa-magic"></i> Auto-fill Missing Prices';
             }
+        });
+    }
+
+    if (adminMarkupInput) {
+        adminMarkupInput.addEventListener('input', () => {
+            // Debounce to avoid re-calculating on every keystroke
+            clearTimeout(itemSearchTimeout); // Re-using an existing timeout variable for debouncing
+            itemSearchTimeout = setTimeout(applyCustomMarkup, 300);
         });
     }
 
