@@ -189,7 +189,6 @@ function initializeOfferModule(deps) {
             itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
         });
 
-        // MODIFICATION: Add keydown listener for Enter key
         searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1460,6 +1459,52 @@ function initializeOfferModule(deps) {
     
     // --- EVENT LISTENERS ---
     
+    if (offerProjectName) {
+        offerProjectName.addEventListener('blur', async () => {
+            const newName = offerProjectName.textContent.trim();
+            if (currentProjectId && newName && newName !== currentReferenceNumber) {
+                const confirmed = await showConfirmModal(
+                    `Are you sure you want to rename this project to "<strong>${newName}</strong>"?`,
+                    "Rename Project",
+                    "bg-sky-600 hover:bg-sky-700",
+                    "Confirm Rename"
+                );
+
+                if (confirmed) {
+                    try {
+                        const res = await fetch(`${API_URL}/project/reference/${currentProjectId}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ referenceNumber: newName, user: currentUser })
+                        });
+                        const result = await res.json();
+                        if (result.success) {
+                            currentReferenceNumber = newName;
+                            updateProjectState({ projectId: currentProjectId, referenceNumber: currentReferenceNumber });
+                            showToast('Project renamed successfully.');
+                            setDirty(false); // Renaming should mark as saved
+                        } else {
+                            showToast(`Error renaming project: ${result.message}`, true);
+                            offerProjectName.textContent = currentReferenceNumber; // Revert on failure
+                        }
+                    } catch (err) {
+                        showToast(`An error occurred: ${err.message}`, true);
+                        offerProjectName.textContent = currentReferenceNumber; // Revert on failure
+                    }
+                } else {
+                    offerProjectName.textContent = currentReferenceNumber; // Revert if user cancels
+                }
+            }
+        });
+
+        offerProjectName.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.target.blur(); // Trigger the blur event to save
+            }
+        });
+    }
+
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.metaKey) {
             if (e.key === 'z') {
