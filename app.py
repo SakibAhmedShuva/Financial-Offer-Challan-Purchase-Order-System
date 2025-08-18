@@ -759,12 +759,16 @@ def save_project():
     filepath = os.path.join(CONFIG['PROJECTS_DIR'], filename)
     
     existing_status = 'Pending'
-    if os.path.exists(filepath):
+    # BUG FIX: Preserve original owner when an admin saves
+    original_owner_email = data.get('user', {}).get('email') # Default to current user for new projects
+    if not is_new_project and os.path.exists(filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
-                existing_status = json.load(f).get('status', 'Pending')
+                existing_data = json.load(f)
+                existing_status = existing_data.get('status', 'Pending')
+                original_owner_email = existing_data.get('owner_email', original_owner_email)
         except (IOError, json.JSONDecodeError):
-            pass
+            pass # If file is corrupted, proceed with current user as owner
 
     project_type = data.get('projectType', 'offer')
 
@@ -773,7 +777,7 @@ def save_project():
         'referenceNumber': data.get('referenceNumber'),
         'lastModified': datetime.now().isoformat(),
         'status': existing_status,
-        'owner_email': data.get('user', {}).get('email'),
+        'owner_email': original_owner_email, # BUG FIX: Use original owner
         'projectType': project_type,
         'items': data.get('items'),
         'client': data.get('client', {}),
@@ -835,6 +839,7 @@ def save_project():
 def get_projects():
     user_email = request.args.get('email')
     search_term = request.args.get('search', '').lower()
+    # user_role is not needed here anymore for filtering, but kept in case other logic depends on it
     user_role = request.args.get('role')
     projects = []
     
@@ -842,12 +847,13 @@ def get_projects():
         if not filename.endswith('.json'):
             continue
         try:
-            project_id = os.path.splitext(filename)[0]
             filepath = os.path.join(CONFIG['PROJECTS_DIR'], filename)
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            if not check_project_permission(project_id, user_email, user_role):
+            # BUG FIX: Only show projects owned by the current user in "My Projects"
+            # Admins should not see other users' projects in this specific list.
+            if data.get('owner_email') != user_email:
                 continue
 
             project_type = data.get('projectType', 'offer')
