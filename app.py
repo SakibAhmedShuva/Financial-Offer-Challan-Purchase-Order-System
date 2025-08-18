@@ -652,7 +652,6 @@ def search_items():
     model_filter = [t.strip().lower() for t in request.args.get('model', '').split(',') if t]
     
     # --- START MODIFICATION ---
-    # MODIFIED: Expect 'product_type' parameter for the new filter.
     product_type_filter_str = request.args.get('product_type', '')
     product_type_filter = [s.strip().lower() for s in product_type_filter_str.split(',') if s] if product_type_filter_str else []
     # --- END MODIFICATION ---
@@ -854,26 +853,25 @@ def get_projects():
             project_type = data.get('projectType', 'offer')
             reference_number_display = data.get('referenceNumber', 'N/A')
             client_name_display = data.get('client', {}).get('name', 'N/A')
-            makes_display = []
+            product_types_display = []
             
-            # This block is now corrected to prevent the NameError
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
                 all_cats = set(i.get('make') for i in data.get('items', []))
-                cats = sorted([str(c) for c in all_cats if c]) # Correctly filter and sort
+                cats = sorted([str(c) for c in all_cats if c])
                 cats_part = '_'.join(cats) if cats else 'MISC'
                 abbreviation = ''.join(word[0]for word in client_name.split()).upper()
                 client_part = ''.join(filter(str.isalnum, abbreviation))[:4]
                 date_part = datetime.fromisoformat(data.get('lastModified')).strftime('%d-%b-%Y')
                 reference_number_display = f"DC_{data.get('referenceNumber')}_{client_part}_{cats_part}_{date_part}"
-                makes_display = cats
+                product_types_display = cats
             elif project_type == 'ai_helper':
                 reference_number_display = f"[AI] {data.get('referenceNumber', 'Untitled')}"
                 client_name_display = "N/A"
-                makes_display = ["AI Processed"]
+                product_types_display = ["AI Processed"]
             else: 
-                all_makes = set(i.get('make', 'N/A') for i in data.get('items', []))
-                makes_display = sorted([str(m) for m in all_makes if m]) # Correctly filter and sort
+                all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
+                product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
 
             if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
                 continue
@@ -883,7 +881,7 @@ def get_projects():
                 'referenceNumber': reference_number_display,
                 'clientName': client_name_display,
                 'dateModified': data.get('lastModified'),
-                'productTypes': ', '.join(makes_display),
+                'productTypes': ', '.join(product_types_display),
                 'status': data.get('status', 'Pending'),
                 'projectType': project_type,
                 **data 
