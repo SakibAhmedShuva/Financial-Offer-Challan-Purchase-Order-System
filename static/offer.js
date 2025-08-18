@@ -1831,7 +1831,8 @@ function initializeOfferModule(deps) {
                 local_supply_price_bdt: item.source_type === 'local' ? item.offer_price : 0.00,
                 installation_price_bdt: item.installation || 0.00,
                 po_price_usd: item.po_price || 0.00,
-                isCustom: false
+                isCustom: false,
+                make: item.product_type // Set the category from the product_type
             };
             newItem.foreign_total_usd = (newItem.qty * parseFloat(newItem.foreign_price_usd)).toFixed(2);
             newItem.local_supply_total_bdt = (newItem.qty * parseFloat(newItem.local_supply_price_bdt)).toFixed(2);
