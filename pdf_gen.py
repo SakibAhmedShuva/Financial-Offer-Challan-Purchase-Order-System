@@ -464,6 +464,17 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     grand_total_usd = subtotal_foreign + freight - discount_foreign
     grand_total_bdt = subtotal_local_supply + subtotal_installation + delivery + vat + ait - discount_local - discount_install
     
+    # START OF CORRECTION
+    # Use the final, potentially user-overridden BDT and Duty values from the frontend
+    if financials.get('use_grand_total_bdt'):
+        grand_total_foreign_bdt = safe_float(financials.get('grandtotal_foreign_bdt', 0))
+        data['grand_total_foreign_bdt'] = grand_total_foreign_bdt
+    
+    if financials.get('use_customs_duty'):
+        customs_duty_bdt = safe_float(financials.get('customs_duty_bdt', 0))
+        data['customs_duty_bdt'] = customs_duty_bdt
+    # END OF CORRECTION
+
     data['words_usd'] = to_words_usd(grand_total_usd)
     data['words_bdt'] = to_words_bdt(grand_total_bdt)
     
