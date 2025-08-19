@@ -1824,6 +1824,10 @@ function initializeOfferModule(deps) {
             financials[`use_${type}`] = true;
             if (type === 'vat') financials.vat_is_percentage = true;
             if (type === 'ait') financials.ait_is_percentage = true;
+            // START OF CORRECTION
+            if (type === 'grand_total_bdt') financials.grand_total_bdt_is_auto = true;
+            if (type === 'customs_duty') financials.customs_duty_is_auto = true;
+            // END OF CORRECTION
             stateChanged = true;
         } else if(button.classList.contains('remove-charge-btn')) {
             financials[`use_${type}`] = false;
@@ -1834,6 +1838,10 @@ function initializeOfferModule(deps) {
                 financials[valueKey] = 0;
                 input.value = 0;
             }
+            // START OF CORRECTION
+            if (type === 'grand_total_bdt') financials.grand_total_bdt_is_auto = true;
+            if (type === 'customs_duty') financials.customs_duty_is_auto = true;
+            // END OF CORRECTION
             stateChanged = true;
         }
 
