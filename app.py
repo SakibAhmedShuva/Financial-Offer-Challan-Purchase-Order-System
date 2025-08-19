@@ -15,15 +15,15 @@ import csv
 import json
 import uuid
 import math
-import tnc 
+import tnc
 from openpyxl.reader.excel import load_workbook
 from dotenv import load_dotenv
 
 # Import newly created modules
 import pdf_gen
 import xlsx_gen
-import data_management 
-import cover_merger 
+import data_management
+import cover_merger
 from app_helpers import html_to_plain_text, to_words_usd, to_words_bdt
 
 # NEW: Import BeautifulSoup for HTML cleaning
@@ -61,6 +61,8 @@ CONFIG = {
     'LOCAL_PRICE_LIST_FILE': 'local_items.xlsx',
     'CHALLAN_LOG_FILE': 'challan.xlsx',
     'MARKUP': float(os.getenv('MARKUP', 0.08)),
+    'BDT_CONVERSION_RATE': float(os.getenv('BDT_CONVERSION_RATE', 125.0)),
+    'CUSTOMS_DUTY_PERCENTAGE': float(os.getenv('CUSTOMS_DUTY_PERCENTAGE', 0.16)), # 16%
     'MODEL_NAME': os.getenv('MODEL_NAME', 'all-MiniLM-L6-v2'),
     'ITEM_FAISS_INDEX_FILE': os.path.join('data_storage', 'item_faiss_index.bin'),
     'ITEM_SEARCH_DATA_FILE': os.path.join('data_storage', 'item_searchable_data.pkl'),
@@ -89,7 +91,7 @@ def sanitize_dirty_html(html_string):
         return ''
 
     soup = BeautifulSoup(html_string, 'html.parser')
-    
+
     # Whitelist of tags to keep
     allowed_tags = {'b', 'strong', 'i', 'em', 'u', 'br'}
 
@@ -105,21 +107,21 @@ def sanitize_dirty_html(html_string):
         strong_tag.name = 'b'
     for em_tag in soup.find_all('em'):
         em_tag.name = 'i'
-        
+
     # Convert <p> tags to <br> tags for line breaks
     for p_tag in soup.find_all('p'):
         p_tag.insert_after(soup.new_tag('br'))
         p_tag.unwrap()
-    
+
     # Get the cleaned HTML as a string
     cleaned_html = str(soup)
-    
+
     # Final regex clean-up for extra spaces and line breaks
     cleaned_html = cleaned_html.replace('&nbsp;', ' ')
     cleaned_html = re.sub(r'\s+', ' ', cleaned_html).strip()
     cleaned_html = re.sub(r'(<br\s*/?>\s*)+', '<br/>', cleaned_html)
     cleaned_html = re.sub(r'^(<br\s*/?>)+|(<br\s*/?>)+$', '', cleaned_html) # Trim leading/trailing breaks
-    
+
     return cleaned_html
 
 def setup_directories_and_files():
@@ -132,7 +134,7 @@ def setup_directories_and_files():
     os.makedirs(CONFIG['COVERS_DIR'], exist_ok=True)
     os.makedirs(CONFIG['THUMBNAILS_DIR'], exist_ok=True)
     os.makedirs(CONFIG['CHAT_ATTACHMENTS_DIR'], exist_ok=True)
-    
+
     global users_df, clients_df
     users_filepath = os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE'])
     clients_filepath = os.path.join(CONFIG['DATA_DIR'], CONFIG['CLIENTS_FILE'])
@@ -142,14 +144,14 @@ def setup_directories_and_files():
     else:
         users_df = pd.DataFrame({'sl': [1, 2], 'name': ['Admin User', 'Normal User'], 'email': ['admin@example.com', 'user@example.com'], 'password': ['adminpass', 'userpass'], 'role': ['admin', 'user']})
         users_df.to_csv(users_filepath, index=False)
-        
+
     if os.path.exists(clients_filepath):
         clients_df = pd.read_csv(clients_filepath)
         clients_df.columns = [c.strip() for c in clients_df.columns]
     else:
         clients_df = pd.DataFrame({'sl': [1, 2], 'client_name': ['Global Construction Ltd.', 'Modern Builders Inc.'], 'client_address': ['123 Business Bay, Dubai', '456 Skyline Ave, Abu Dhabi']})
         clients_df.to_csv(clients_filepath, index=False)
-    
+
     for key in ['ACTIVITY_LOG_FILE', 'REVIEW_REQUESTS_FILE', 'NOTIFICATIONS_FILE', 'PROJECT_SHARES_FILE', 'TASKS_FILE', 'CHAT_HISTORY_FILE']:
         filepath = os.path.join(CONFIG['DATA_DIR'], CONFIG[key])
         if not os.path.exists(filepath):
@@ -167,7 +169,7 @@ def setup_directories_and_files():
 def log_activity(user_name, fo_name, file_path, project_id):
     try:
         log_file = os.path.join(CONFIG['DATA_DIR'], CONFIG['ACTIVITY_LOG_FILE'])
-        
+
         sl = 1
         if os.path.exists(log_file) and os.path.getsize(log_file) > 0:
             try:
@@ -195,7 +197,7 @@ def create_notification(user_email, message):
 def find_description_column(df):
     common_names = ['description', 'desc', 'details', 'item name', 'item description', 'particulars']
     df_columns_lower = [str(col).lower().strip() for col in df.columns]
-    
+
     for name in common_names:
         if name in df_columns_lower:
             original_col_index = df_columns_lower.index(name)
@@ -216,21 +218,21 @@ def find_description_column(df):
 def check_project_permission(project_id, user_email, user_role):
     if user_role == 'admin':
         return True
-    
+
     project_filepath = os.path.join(CONFIG['PROJECTS_DIR'], f"{project_id}.json")
     if os.path.exists(project_filepath):
         with open(project_filepath, 'r', encoding='utf-8') as f:
             project_data = json.load(f)
         if project_data.get('owner_email') == user_email:
             return True
-            
+
     shares_filepath = os.path.join(CONFIG['DATA_DIR'], CONFIG['PROJECT_SHARES_FILE'])
     if os.path.exists(shares_filepath):
         shares_df = pd.read_csv(shares_filepath)
         is_shared = not shares_df[(shares_df['project_id'] == project_id) & (shares_df['shared_with_email'] == user_email)].empty
         if is_shared:
             return True
-            
+
     return False
 
 def safe_float(value, default=0.0):
@@ -302,7 +304,7 @@ def export_file(file_type, data):
     full_reference_number = data.get('referenceNumber', "FinancialOffer_NoRef")
     selected_cover = data.get('selected_cover')
     project_id = data.get('projectId')
-    
+
     buffer = io.BytesIO()
 
     items = data.get('items', [])
@@ -320,13 +322,13 @@ def export_file(file_type, data):
     has_foreign_part = visible_columns.get('foreign_price', True) and any(safe_float(item.get('foreign_total_usd')) > 0 for item in items)
     has_local_supply_part = visible_columns.get('local_supply_price') and any(safe_float(item.get('local_supply_total_bdt')) > 0 for item in items)
     has_install_part = visible_columns.get('installation_price') and any(safe_float(item.get('installation_total_bdt')) > 0 for item in items)
-    
+
     data['has_foreign_part'] = has_foreign_part
     data['has_local_part'] = has_local_supply_part or has_install_part
-    
+
     sub_total_usd = sum(safe_float(scope.get('total_usd')) for scope in summary_scopes.values())
     sub_total_bdt = sum(safe_float(scope.get('total_bdt')) for scope in summary_scopes.values())
-    
+
     discount_bdt_total = safe_float(financials.get('discount_local_bdt')) + safe_float(financials.get('discount_installation_bdt'))
 
     grand_total_usd = sub_total_usd + safe_float(financials.get('freight_foreign_usd')) - safe_float(financials.get('discount_foreign_usd'))
@@ -338,11 +340,11 @@ def export_file(file_type, data):
 
     if file_type == 'pdf':
         pdf_bytes = pdf_gen.generate_financial_offer_pdf(data, CONFIG['AUTH_DIR'], CONFIG['HEADER_COLOR_HEX'])
-        
+
         if selected_cover:
             temp_dir = os.path.join(CONFIG['FOS_DIR'], 'temp_merge')
             os.makedirs(temp_dir, exist_ok=True)
-            
+
             safe_temp_filename = re.sub(r'[\\/*?:"<>|]', "_", filename_with_ext)
             offer_pdf_path = os.path.join(temp_dir, f"temp_offer_{safe_temp_filename}.pdf")
             cover_path = os.path.join(CONFIG['COVERS_DIR'], selected_cover)
@@ -355,19 +357,19 @@ def export_file(file_type, data):
                 if os.path.exists(cover_path):
                     print(f"Merging cover '{cover_path}' with offer '{offer_pdf_path}'")
                     cover_merger.merge_pdfs_with_resize([cover_path, offer_pdf_path], merged_output_path)
-                    
+
                     with open(merged_output_path, 'rb') as f:
                         buffer.write(f.read())
                 else:
                     print(f"Warning: Selected cover '{selected_cover}' not found. Exporting without cover.")
                     buffer.write(pdf_bytes)
-            
+
             finally:
                 if os.path.exists(offer_pdf_path): os.remove(offer_pdf_path)
                 if os.path.exists(merged_output_path): os.remove(merged_output_path)
         else:
             buffer.write(pdf_bytes)
-            
+
         mimetype = 'application/pdf'
     elif file_type == 'xlsx':
         wb = xlsx_gen.generate_financial_offer_xlsx(data, CONFIG['AUTH_DIR'], CONFIG['HEADER_COLOR_HEX'])
@@ -409,13 +411,13 @@ def find_relevant_columns(df):
     sl_names = ['sl', 'sl.', 'sl no', 'serial', 'serial no', '#']
     desc_names = ['description', 'desc', 'item description', 'particulars', 'item name', 'product']
     qty_names = ['qty', 'quantity', 'bal', 'balance']
-    
+
     for key, names in [('sl', sl_names), ('description', desc_names), ('quantity', qty_names)]:
         for name in names:
             if name in df_cols_lower:
                 cols[key] = df_cols_lower[name]
                 break
-    
+
     if not cols['description']:
         max_avg_len = 0
         desc_col = None
@@ -462,7 +464,7 @@ def get_covers():
         covers_dir = CONFIG['COVERS_DIR']
         if not os.path.exists(covers_dir):
             return jsonify([])
-        
+
         all_covers = [f for f in os.listdir(covers_dir) if f.lower().endswith('.pdf')]
 
         if search_query:
@@ -476,7 +478,7 @@ def get_covers():
                     filtered_covers.append(cover_name)
         else:
             filtered_covers = all_covers
-            
+
         return jsonify(sorted(filtered_covers))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -588,11 +590,11 @@ def get_sheet_names():
         if os.path.exists(CONFIG['PRICE_LIST_FILE']):
             wb_foreign = load_workbook(CONFIG['PRICE_LIST_FILE'], read_only=True, keep_vba=False)
             all_sheet_names.update(wb_foreign.sheetnames)
-        
+
         if os.path.exists(CONFIG['LOCAL_PRICE_LIST_FILE']):
             wb_local = load_workbook(CONFIG['LOCAL_PRICE_LIST_FILE'], read_only=True, keep_vba=False)
             all_sheet_names.update(wb_local.sheetnames)
-            
+
         return jsonify(sorted(list(all_sheet_names)))
     except Exception as e:
         print(f"Error reading sheet names: {e}")
@@ -606,7 +608,7 @@ def get_filter_options():
     filter_columns = list(filter_options.keys())
 
     files_to_process = [CONFIG['PRICE_LIST_FILE'], CONFIG['LOCAL_PRICE_LIST_FILE']]
-    
+
     all_data_df = pd.DataFrame()
 
     for file_path in files_to_process:
@@ -622,7 +624,7 @@ def get_filter_options():
             except Exception as e:
                 print(f"Could not process {file_path} for filters: {e}")
                 continue
-    
+
     if not all_data_df.empty:
         for col in filter_columns:
             if col in all_data_df.columns:
@@ -632,6 +634,17 @@ def get_filter_options():
 
     return jsonify(filter_options)
 
+@app.route('/get_offer_config', methods=['GET'])
+def get_offer_config():
+    """Provides frontend with necessary calculation rates."""
+    try:
+        return jsonify({
+            'success': True,
+            'bdt_conversion_rate': CONFIG['BDT_CONVERSION_RATE'],
+            'customs_duty_percentage': CONFIG['CUSTOMS_DUTY_PERCENTAGE']
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/search_clients', methods=['GET'])
 def search_clients():
@@ -650,7 +663,7 @@ def search_items():
     make_filter = [t.strip().lower() for t in request.args.get('make', '').split(',') if t]
     approvals_filter = [t.strip().lower() for t in request.args.get('approvals', '').split(',') if t]
     model_filter = [t.strip().lower() for t in request.args.get('model', '').split(',') if t]
-    
+
     # --- START MODIFICATION ---
     product_type_filter_str = request.args.get('product_type', '')
     product_type_filter = [s.strip().lower() for s in product_type_filter_str.split(',') if s] if product_type_filter_str else []
@@ -668,7 +681,7 @@ def search_items():
             item_copy = item.copy()
             item_copy['source_type'] = 'local'
             all_items_to_search.append(item_copy)
-    
+
     # Apply categorical filters first
     filtered_items = []
     for item in all_items_to_search:
@@ -687,7 +700,7 @@ def search_items():
         if model_filter and str(item.get('model', '')).lower() not in model_filter:
             continue
         filtered_items.append(item)
-    
+
     if not query:
         # If no search query, return the pre-filtered list
         return jsonify(filtered_items)
@@ -696,54 +709,54 @@ def search_items():
     all_terms = query.split()
     positive_query_parts = []
     negative_keywords = []
-    
+
     for term in all_terms:
         if term.startswith('-') and len(term) > 1:
             negative_keywords.append(term[1:])
         else:
             positive_query_parts.append(term)
-            
+
     positive_query = " ".join(positive_query_parts)
     positive_keywords = [word for word in re.split(r'[^a-z0-9]+', positive_query) if word]
-    
+
     if not positive_keywords:
         return jsonify(filtered_items)
 
     scored_results = []
     for item in filtered_items: # Search within the already filtered items
         target_text = item.get('search_text', '')
-        
+
         # 1. Negative Filter: Skip item if it contains any negative keyword
         if any(neg_keyword in target_text for neg_keyword in negative_keywords):
             continue
 
         # 2. Positive Scoring: Score based on positive keywords
         matched_keywords_count = sum(1 for pos_keyword in positive_keywords if pos_keyword in target_text)
-        
+
         if matched_keywords_count > 0:
             score = matched_keywords_count / len(positive_keywords)
-            
+
             if positive_query in target_text:
                 score += 0.5
-                
+
             item['relevance_score'] = score
             item['source_sort_key'] = 0 if item['source_type'] == 'foreign' else 1
             scored_results.append(item)
-    
+
     # Sort results
     sorted_results = sorted(scored_results, key=lambda x: (-x['relevance_score'], x['source_sort_key']))
-    
+
     if role != 'admin':
         for item in sorted_results:
             item.pop('relevance_score', None)
             item.pop('source_sort_key', None)
-    
+
     return jsonify(sorted_results)
 
 @app.route('/project', methods=['POST'])
 def save_project():
     data = request.json
-    
+
     # --- NEW SANITIZATION STEP ---
     items_to_save = data.get('items')
     if items_to_save:
@@ -757,7 +770,7 @@ def save_project():
     project_id = data.get('projectId') or str(uuid.uuid4())
     filename = f"{project_id}.json"
     filepath = os.path.join(CONFIG['PROJECTS_DIR'], filename)
-    
+
     existing_status = 'Pending'
     # BUG FIX: Preserve original owner when an admin saves
     original_owner_email = data.get('user', {}).get('email') # Default to current user for new projects
@@ -820,13 +833,13 @@ def save_project():
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(project_data, f, indent=4)
-        
+
         user_name = data.get('user', {}).get('name', 'Unknown')
         reference_number = project_data.get('referenceNumber', 'Unsaved Project')
-        
+
         log_action = 'PROJECT_CREATED' if is_new_project else 'PROJECT_SAVED'
         log_activity(user_name, reference_number, log_action, project_id)
-            
+
         return jsonify({'success': True, 'projectId': project_id, 'referenceNumber': project_data['referenceNumber'], 'message': 'Project saved successfully.'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -842,7 +855,7 @@ def get_projects():
     # user_role is not needed here anymore for filtering, but kept in case other logic depends on it
     user_role = request.args.get('role')
     projects = []
-    
+
     for filename in os.listdir(CONFIG['PROJECTS_DIR']):
         if not filename.endswith('.json'):
             continue
@@ -850,7 +863,7 @@ def get_projects():
             filepath = os.path.join(CONFIG['PROJECTS_DIR'], filename)
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
+
             # BUG FIX: Only show projects owned by the current user in "My Projects"
             # Admins should not see other users' projects in this specific list.
             if data.get('owner_email') != user_email:
@@ -860,7 +873,7 @@ def get_projects():
             reference_number_display = data.get('referenceNumber', 'N/A')
             client_name_display = data.get('client', {}).get('name', 'N/A')
             product_types_display = []
-            
+
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
                 all_cats = set(i.get('make') for i in data.get('items', []))
@@ -875,7 +888,7 @@ def get_projects():
                 reference_number_display = f"[AI] {data.get('referenceNumber', 'Untitled')}"
                 client_name_display = "N/A"
                 product_types_display = ["AI Processed"]
-            else: 
+            else:
                 all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
                 product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
 
@@ -890,16 +903,16 @@ def get_projects():
                 'productTypes': ', '.join(product_types_display),
                 'status': data.get('status', 'Pending'),
                 'projectType': project_type,
-                **data 
+                **data
             })
         except Exception as e:
             print(f"Error processing project file {filename}: {e}")
             continue
-            
+
     projects.sort(key=lambda p: p['dateModified'], reverse=True)
     for i, p in enumerate(projects):
         p['sl'] = i + 1
-        
+
     return jsonify(projects)
 
 # FIX: New dedicated endpoint for the admin Activity Log to fetch ALL projects
@@ -927,7 +940,7 @@ def get_all_projects_for_admin():
             reference_number_display = data.get('referenceNumber', 'N/A')
             client_name_display = data.get('client', {}).get('name', 'N/A')
             product_types_display = []
-            
+
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
                 all_cats = set(i.get('make') for i in data.get('items', []))
@@ -942,7 +955,7 @@ def get_all_projects_for_admin():
                 reference_number_display = f"[AI] {data.get('referenceNumber', 'Untitled')}"
                 client_name_display = "N/A"
                 product_types_display = ["AI Processed"]
-            else: 
+            else:
                 all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
                 product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
 
@@ -957,16 +970,16 @@ def get_all_projects_for_admin():
                 'productTypes': ', '.join(product_types_display),
                 'status': data.get('status', 'Pending'),
                 'projectType': project_type,
-                **data 
+                **data
             })
         except Exception as e:
             print(f"Error processing project file {filename}: {e}")
             continue
-            
+
     projects.sort(key=lambda p: p['dateModified'], reverse=True)
     for i, p in enumerate(projects):
         p['sl'] = i + 1
-        
+
     return jsonify(projects)
 
 @app.route('/project/<project_id>', methods=['GET', 'DELETE'])
@@ -1093,25 +1106,25 @@ def ai_helper_process_file():
 
         header_row_index = -1
         header_keywords = ['sl', 'description', 'desc', 'item', 'particulars', 'qty', 'quantity', 'unit']
-        
+
         for i, row in enumerate(ws.iter_rows(max_row=20, values_only=True)):
             if row is None: continue
-            
+
             row_lower = [str(cell).lower().strip() for cell in row if cell is not None]
             matches = sum(1 for keyword in header_keywords if any(keyword in cell for cell in row_lower))
-            
+
             has_high_confidence_header = any(cell in ['item description', 'particulars'] for cell in row_lower)
 
             if matches >= 2 or has_high_confidence_header:
                 header_row_index = i
                 break
-        
+
         if header_row_index == -1:
             raise ValueError("Could not detect a valid header row.")
 
         file.seek(0)
         df = pd.read_excel(file, header=header_row_index)
-        
+
         df.dropna(how='all', inplace=True)
         original_headers = df.columns.tolist()
         df.columns = [str(c).strip().lower() for c in df.columns]
@@ -1120,7 +1133,7 @@ def ai_helper_process_file():
         description_col_name = find_description_column(df)
         if not description_col_name:
             raise ValueError("Could not determine a description column.")
-        
+
         description_col_idx = lower_headers.index(description_col_name.lower())
 
         qty_col_idx = -1
@@ -1142,7 +1155,7 @@ def ai_helper_process_file():
 
         last_valid_index = -1
         footer_keywords = ['total', 'grand total', 'subtotal', 'sub-total', 'authorized', 'signature', 'in words']
-        
+
         df[description_col_name] = df[description_col_name].astype(str)
 
         for i in range(len(df) - 1, -1, -1):
@@ -1152,7 +1165,7 @@ def ai_helper_process_file():
             if pd.notna(desc_val_series) and desc_val != 'nan' and desc_val != '' and not any(keyword in desc_val for keyword in footer_keywords):
                 last_valid_index = i
                 break
-        
+
         if last_valid_index != -1:
             df = df.iloc[:last_valid_index + 1]
 
@@ -1166,39 +1179,39 @@ def ai_helper_process_file():
             description_text = row_data[description_col_idx]
             suggestions = []
             has_match = False
-            
+
             if description_text and len(description_text.strip()) > 5:
                 query_embedding = sentence_model.encode([description_text.lower()], convert_to_tensor=True).cpu().numpy()
                 all_distances, all_indices = [], []
-                
+
                 if use_foreign and item_faiss_index:
                     dist, ind = item_faiss_index.search(query_embedding, k=CONFIG['AI_HELPER_TOP_K'])
                     all_distances.extend(dist[0])
                     all_indices.extend([(i, 'foreign') for i in ind[0] if i < len(item_searchable_data)])
-                
+
                 if use_local and local_item_faiss_index:
                     dist, ind = local_item_faiss_index.search(query_embedding, k=CONFIG['AI_HELPER_TOP_K'])
                     all_distances.extend(dist[0])
                     all_indices.extend([(i, 'local') for i in ind[0] if i < len(local_item_searchable_data)])
-                
+
                 if all_indices:
                     combined_results = sorted(zip(all_distances, all_indices), key=lambda x: x[0])
                     if combined_results and combined_results[0][0] < 1.0:
                         has_match = True
-                    
+
                     top_k_indices = [res[1] for res in combined_results[:CONFIG['AI_HELPER_TOP_K']]]
                     for idx, source in top_k_indices:
                         data_source = item_searchable_data if source == 'foreign' else local_item_searchable_data
                         suggestion = data_source[idx].copy()
                         suggestion['source_type'] = source
                         suggestions.append(suggestion)
-            
+
             processed_rows.append({"original_data": row_data, "has_match": has_match, "suggestions": suggestions})
 
         return jsonify({
-            "success": True, 
-            "headers": original_headers, 
-            "description_column_index": description_col_idx, 
+            "success": True,
+            "headers": original_headers,
+            "description_column_index": description_col_idx,
             "quantity_column_index": qty_col_idx,
             "unit_column_index": unit_col_idx,
             "unit_price_column_index": unit_price_col_idx,
@@ -1220,7 +1233,7 @@ def ai_helper_process_file():
                 if not df[col].isnull().all():
                     description_col_idx = i
                     break
-            
+
             if description_col_idx == -1:
                 return jsonify({'success': False, 'message': 'The uploaded file appears to be empty.'}), 400
 
@@ -1384,7 +1397,7 @@ def mark_notification_read():
         df = pd.read_csv(notif_filepath)
         df.loc[df['notification_id'] == notif_id, 'is_read'] = 'yes'
         df.to_csv(notif_filepath, index=False)
-        
+
         user_notifications = df[df['user_email'] == user_email].copy()
         user_notifications.sort_values(by='timestamp', ascending=False, inplace=True)
         return jsonify({'success': True, 'notifications': user_notifications.to_dict('records')})
@@ -1395,7 +1408,7 @@ def mark_notification_read():
 def delete_notification():
     notif_id = request.json.get('notification_id')
     user_email = request.json.get('email')
-    
+
     if not notif_id or not user_email:
         return jsonify({'success': False, 'message': 'Missing data.'}), 400
 
@@ -1405,14 +1418,14 @@ def delete_notification():
              return jsonify({'success': True, 'notifications': []})
 
         df = pd.read_csv(notif_filepath)
-        
+
         notif_exists = not df[(df['notification_id'] == notif_id) & (df['user_email'] == user_email)].empty
         if not notif_exists:
             pass
         else:
             df = df[~((df['notification_id'] == notif_id) & (df['user_email'] == user_email))]
             df.to_csv(notif_filepath, index=False)
-        
+
         user_notifications = df[df['user_email'] == user_email].copy()
         user_notifications.sort_values(by='timestamp', ascending=False, inplace=True)
         return jsonify({'success': True, 'notifications': user_notifications.to_dict('records')})
@@ -1420,7 +1433,7 @@ def delete_notification():
     except Exception as e:
         print(f"Error deleting notification: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-    
+
 @app.route('/share_project', methods=['POST'])
 def share_project():
     data = request.json
@@ -1483,15 +1496,15 @@ def send_message():
     sender_email, recipient_email, message = data.get('sender'), data.get('recipient'), data.get('message')
     if not all([sender_email, recipient_email, message]):
         return jsonify({'success': False, 'message': 'Missing data.'}), 400
-    
+
     users_df = pd.read_csv(os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE']))
     sender_series = users_df[users_df['email'] == sender_email]
-    
+
     if sender_series.empty or sender_series.iloc[0]['role'] != 'admin':
         return jsonify({'success': False, 'message': 'Permission denied. Only admins can send messages.'}), 403
-    
+
     sender_name = sender_series.iloc[0]['name']
-    
+
     formatted_message = f"<b>Admin Message:</b><br>{message}"
 
     if recipient_email.lower() == 'all':
@@ -1535,7 +1548,7 @@ def get_new_challan_ref():
         last_ref = pd.to_numeric(df[ref_col_name], errors='coerce').max()
         if pd.isna(last_ref):
             return jsonify({'success': True, 'referenceNumber': start_ref})
-            
+
         new_ref = int(last_ref) + 1
         return jsonify({'success': True, 'referenceNumber': new_ref})
 
@@ -1550,16 +1563,16 @@ def export_challan_endpoint():
     client_info = data.get('client', {})
     user_name = data.get('user', {}).get('name', 'Unknown')
     project_id = data.get('projectId', 'N/A')
-    
+
     safe_filename = data.get('filename', f"DC_{ref_number}_export.{file_type}")
 
     challan_log_path = os.path.join(CONFIG['DATA_DIR'], CONFIG['CHALLAN_LOG_FILE'])
     try:
         df = pd.read_excel(challan_log_path)
         new_sl = (df['SL'].max() + 1) if not df.empty and pd.notna(df['SL'].max()) else 1
-        
+
         description = ', '.join(data.get('categories', []))
-        
+
         new_row_data = {
             'SL': new_sl,
             'Ref': ref_number,
@@ -1571,10 +1584,10 @@ def export_challan_endpoint():
             'Challan Carrier': '',
             'Prepared by': user_name
         }
-        
+
         new_row_df = pd.DataFrame([new_row_data])
         df = pd.concat([df, new_row_df], ignore_index=True)
-        
+
         df.to_excel(challan_log_path, index=False, engine='openpyxl')
 
     except Exception as e:
@@ -1592,7 +1605,7 @@ def export_challan_endpoint():
         mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     else:
         return jsonify({'success': False, 'message': "Unsupported file type"}), 400
-    
+
     log_name = f"[Challan Exported {file_type.upper()}] {ref_number}"
     log_activity(user_name, log_name, safe_filename, project_id)
 
@@ -1604,10 +1617,10 @@ def convert_to_words_endpoint():
     data = request.json
     usd_value = data.get('usd_value', 0)
     bdt_value = data.get('bdt_value', 0)
-    
+
     words_usd = to_words_usd(usd_value)
     words_bdt = to_words_bdt(bdt_value)
-    
+
     return jsonify({
         'success': True,
         'words_usd': words_usd,
@@ -1652,7 +1665,7 @@ def update_master_price():
         filepath = CONFIG['PRICE_LIST_FILE']
     else: # local
         filepath = CONFIG['LOCAL_PRICE_LIST_FILE']
-    
+
     price_data = {
         'price_column': price_column_to_update,
         'price_value': value_to_save,
@@ -1684,7 +1697,7 @@ def autofill_master_prices():
         'foreign': CONFIG['PRICE_LIST_FILE'],
         'local': CONFIG['LOCAL_PRICE_LIST_FILE']
     }
-    
+
     updated_items_count = 0
     errors = []
 
@@ -1697,7 +1710,7 @@ def autofill_master_prices():
             for sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
                 header = [cell.value.lower().strip() if cell.value else '' for cell in ws[1]]
-                
+
                 try:
                     offer_price_col_idx = header.index('offer_price')
                     if 'installation' in header:
@@ -1709,26 +1722,26 @@ def autofill_master_prices():
                 except ValueError as e:
                     errors.append(f"Skipping sheet '{sheet_name}' in {os.path.basename(filepath)}: Missing required column ({e})")
                     continue
-                
+
                 for row_idx in range(2, ws.max_row + 1):
                     install_cell = ws.cell(row=row_idx, column=install_price_col_idx + 1)
                     install_price = safe_float(install_cell.value)
-                    
+
                     if install_price == 0:
                         offer_price_cell = ws.cell(row=row_idx, column=offer_price_col_idx + 1)
                         offer_price = safe_float(offer_price_cell.value)
-                        
+
                         if offer_price > 0:
                             # Logic: Installation is 10% of offer price, rounded to nearest whole number
                             calculated_install_price = round(offer_price * 0.10)
                             install_cell.value = calculated_install_price
                             updated_items_count += 1
-            
+
             wb.save(filepath)
 
         except Exception as e:
             errors.append(f"Failed to process {os.path.basename(filepath)}: {e}")
-    
+
     if updated_items_count > 0:
         log_activity(admin_email, "Master Price Autofill", f"Auto-filled {updated_items_count} items.", "N/A")
         print("Re-initializing data after autofill...")
@@ -1741,7 +1754,7 @@ def autofill_master_prices():
     if errors:
         message += "Encountered errors: " + "; ".join(errors)
         return jsonify({'success': False, 'message': message})
-    
+
     return jsonify({'success': True, 'message': message})
 
 # --- SocketIO Chat Handlers ---
@@ -1752,19 +1765,19 @@ def upload_chat_attachment():
     file = request.files['file']
     if file.filename == '':
         return jsonify({'success': False, 'message': 'No selected file'}), 400
-    
+
     try:
         original_filename = secure_filename(file.filename)
         file_ext = os.path.splitext(original_filename)[1]
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         save_path = os.path.join(CONFIG['CHAT_ATTACHMENTS_DIR'], unique_filename)
         file.save(save_path)
-        
+
         file_url = f"/chat_attachment/{unique_filename}"
-        
+
         return jsonify({
-            'success': True, 
-            'url': file_url, 
+            'success': True,
+            'url': file_url,
             'filename': original_filename
         })
     except Exception as e:
@@ -1776,9 +1789,9 @@ def get_chat_attachment(filename):
     try:
         original_name = request.args.get('original_name', filename)
         return send_from_directory(
-            CONFIG['CHAT_ATTACHMENTS_DIR'], 
-            filename, 
-            as_attachment=True, 
+            CONFIG['CHAT_ATTACHMENTS_DIR'],
+            filename,
+            as_attachment=True,
             download_name=original_name
         )
     except FileNotFoundError:
@@ -1794,7 +1807,7 @@ def handle_user_online(data):
     if email:
         online_users[email] = request.sid
         print(f"User online: {email} with sid {request.sid}")
-        
+
         users_df_path = os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE'])
         if os.path.exists(users_df_path):
             users_df = pd.read_csv(users_df_path)
@@ -1812,7 +1825,7 @@ def handle_disconnect():
     if disconnected_email:
         del online_users[disconnected_email]
         print(f"User disconnected: {disconnected_email}")
-        
+
         users_df_path = os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE'])
         if os.path.exists(users_df_path):
             users_df = pd.read_csv(users_df_path)
@@ -1823,14 +1836,14 @@ def handle_disconnect():
 @socketio.on('private_message')
 def handle_private_message(data):
     recipient_email = data.get('recipient_email')
-    message_obj = data.get('message') 
-    
+    message_obj = data.get('message')
+
     sender_email = None
     for email, sid in online_users.items():
         if sid == request.sid:
             sender_email = email
             break
-            
+
     if sender_email and recipient_email and message_obj:
         timestamp = datetime.now().isoformat()
         message_id = str(uuid.uuid4())
@@ -1843,7 +1856,7 @@ def handle_private_message(data):
             print(f"Error saving chat message: {e}")
 
         recipient_sid = online_users.get(recipient_email)
-        
+
         message_payload = {
             'sender_email': sender_email,
             'message': message_obj,
@@ -1866,7 +1879,7 @@ def get_chat_history(user1_email, user2_email):
                 ((df['sender_email'] == user1_email) & (df['recipient_email'] == user2_email)) |
                 ((df['sender_email'] == user2_email) & (df['recipient_email'] == user1_email))
             ].copy()
-            
+
             def parse_message(msg):
                 try:
                     return json.loads(msg)
@@ -1885,7 +1898,7 @@ def get_chat_history(user1_email, user2_email):
 if __name__ == '__main__':
     try:
         setup_directories_and_files()
-        
+
         print("Initializing data management module...")
         init_config = CONFIG.copy()
         init_config['USERS_FILE'] = os.path.join(CONFIG['AUTH_DIR'], CONFIG['USERS_FILE'])
@@ -1894,7 +1907,7 @@ if __name__ == '__main__':
         init_config['LOCAL_PRICE_LIST_FILE'] = os.path.join(CONFIG['DATA_DIR'], CONFIG['LOCAL_PRICE_LIST_FILE'])
 
         data_objects = data_management.initialize_data(init_config)
-        
+
         sentence_model = data_objects['sentence_model']
         item_faiss_index = data_objects['item_faiss_index']
         item_searchable_data = data_objects['item_searchable_data']
@@ -1902,9 +1915,9 @@ if __name__ == '__main__':
         local_item_searchable_data = data_objects['local_item_searchable_data']
         client_faiss_index = data_objects['client_faiss_index']
         client_searchable_data = data_objects['client_searchable_data']
-        
+
         print("Application initialized successfully!")
         socketio.run(app, host='0.0.0.0', debug=True, use_reloader=False, port=5001)
-        
+
     except Exception as e:
         print(f"FATAL: Failed to initialize application. Please check the errors above. Exception: {e}")
