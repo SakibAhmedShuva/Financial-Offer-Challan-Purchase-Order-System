@@ -1090,13 +1090,15 @@ function initializeOfferModule(deps) {
         document.getElementById('subtotal-local').textContent = subtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('subtotal-installation').textContent = subtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+        document.getElementById('grandtotal-foreign').textContent = grandtotal_foreign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-po').textContent = grandtotal_po.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-local').textContent = grandtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
-        // START OF REVISED SECTION
+        // START OF CORRECTED SECTION
+        // This block now correctly handles auto-calculation vs. manual override.
         if (financials.use_grand_total_bdt && financials.grand_total_bdt_is_auto) {
-            financials.grandtotal_foreign_bdt = (grandtotal_foreign * offerConfig.bdt_conversion_rate).toFixed(2);
+            financials.grandtotal_foreign_bdt = (grandtotal_foreign * offerConfig.bdt_conversion_rate);
         }
 
         const grandtotal_bdt_val = financials.use_grand_total_bdt ? parseFloat(financials.grandtotal_foreign_bdt || 0) : 0;
@@ -1112,7 +1114,7 @@ function initializeOfferModule(deps) {
 
         const customsDutyInput = document.querySelector('[data-type="customs_duty_bdt"]');
         if (customsDutyInput) customsDutyInput.value = customs_duty_val.toFixed(2);
-        // END OF REVISED SECTION
+        // END OF CORRECTED SECTION
 
         renderFinancialSummaryUI();
     };
