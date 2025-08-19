@@ -1090,26 +1090,29 @@ function initializeOfferModule(deps) {
         document.getElementById('subtotal-local').textContent = subtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('subtotal-installation').textContent = subtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-        document.getElementById('grandtotal-foreign').textContent = grandtotal_foreign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-po').textContent = grandtotal_po.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-local').textContent = grandtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-        const grandtotal_bdt_foreign_val = financials.use_grand_total_bdt ? grandtotal_foreign * offerConfig.bdt_conversion_rate : 0;
-
-        const customs_duty_val = financials.use_customs_duty && grandtotal_bdt_foreign_val > 0
-            ? Math.ceil((grandtotal_bdt_foreign_val * offerConfig.customs_duty_percentage) / 100) * 100
-            : 0;
-
-        const grandTotalBdtEl = document.getElementById('grandtotal-foreign-bdt');
-        if (grandTotalBdtEl) {
-            grandTotalBdtEl.textContent = grandtotal_bdt_foreign_val.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        
+        // START OF REVISED SECTION
+        if (financials.use_grand_total_bdt && financials.grand_total_bdt_is_auto) {
+            financials.grandtotal_foreign_bdt = (grandtotal_foreign * offerConfig.bdt_conversion_rate).toFixed(2);
         }
 
-        const customsDutyEl = document.getElementById('customs-duty-bdt');
-        if (customsDutyEl) {
-            customsDutyEl.textContent = customs_duty_val.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const grandtotal_bdt_val = financials.use_grand_total_bdt ? parseFloat(financials.grandtotal_foreign_bdt || 0) : 0;
+
+        if (financials.use_customs_duty && financials.customs_duty_is_auto && grandtotal_bdt_val > 0) {
+            financials.customs_duty_bdt = Math.ceil((grandtotal_bdt_val * offerConfig.customs_duty_percentage) / 100) * 100;
         }
+        
+        const customs_duty_val = financials.use_customs_duty ? parseFloat(financials.customs_duty_bdt || 0) : 0;
+
+        const grandTotalBdtInput = document.querySelector('[data-type="grandtotal_foreign_bdt"]');
+        if (grandTotalBdtInput) grandTotalBdtInput.value = grandtotal_bdt_val.toFixed(2);
+
+        const customsDutyInput = document.querySelector('[data-type="customs_duty_bdt"]');
+        if (customsDutyInput) customsDutyInput.value = customs_duty_val.toFixed(2);
+        // END OF REVISED SECTION
 
         renderFinancialSummaryUI();
     };
@@ -1745,12 +1748,20 @@ function initializeOfferModule(deps) {
         if (target.classList.contains('financial-input')) {
             const type = target.dataset.type;
             financials[type] = target.value;
+            // START OF REVISED SECTION
             if (type === 'vat_local_bdt') {
                 financials.vat_is_percentage = false;
             }
             if (type === 'ait_local_bdt') {
                 financials.ait_is_percentage = false;
             }
+            if (type === 'grandtotal_foreign_bdt') {
+                financials.grand_total_bdt_is_auto = false;
+            }
+            if (type === 'customs_duty_bdt') {
+                financials.customs_duty_is_auto = false;
+            }
+            // END OF REVISED SECTION
             updateFinancialSummary();
             captureState();
         }
