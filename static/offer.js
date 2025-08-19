@@ -5,8 +5,8 @@ function initializeOfferModule(deps) {
     // --- STATE ---
     let selectedClient = null, offerItems = [], itemSearchTimeout, currentProjectId = null, currentReferenceNumber = null;
     let selectedCover = null;
-    let isSummaryPageEnabled = true; 
-    let summaryScopeDescriptions = {}; 
+    let isSummaryPageEnabled = true;
+    let summaryScopeDescriptions = {};
     let includeSignature = true;
     let currentSortOrder = 'custom';
     let searchSettings = { foreign: true, local: false };
@@ -15,11 +15,12 @@ function initializeOfferModule(deps) {
     let activeScrollListener = null;
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
-    
+    let offerConfig = { bdt_conversion_rate: 125, customs_duty_percentage: 0.16 };
+
     // --- NEW EXCEL-LIKE STATE ---
     let activeCell = { row: -1, col: -1 };
     let isEditing = false;
-    
+
     let filterOptions = {};
     let activeFilters = { make: [], approvals: [], model: [], product_type: [] };
 
@@ -50,12 +51,12 @@ function initializeOfferModule(deps) {
 
     let financialLabels = getDefaultFinancialLabels();
 
-    let financials = { 
-        freight_foreign_usd: 0, 
+    let financials = {
+        freight_foreign_usd: 0,
         discount_foreign_usd: 0,
         freight_po_usd: 0,
         discount_po_usd: 0,
-        delivery_local_bdt: 0, 
+        delivery_local_bdt: 0,
         vat_local_bdt: 0,
         ait_local_bdt: 0,
         discount_local_bdt: 0,
@@ -72,9 +73,11 @@ function initializeOfferModule(deps) {
         vat_is_percentage: true,
         ait_is_percentage: true,
         vat_percentage: 7.5,
-        ait_percentage: 5
+        ait_percentage: 5,
+        use_grand_total_bdt: false,
+        use_customs_duty: false
     };
-    let visibleColumns = { 
+    let visibleColumns = {
         foreign_price: true,
         po_price: false,
         local_supply_price: false,
@@ -84,7 +87,7 @@ function initializeOfferModule(deps) {
     // --- UNDO/REDO STATE ---
     let history = [];
     let historyIndex = -1;
-    let isRestoringState = false; 
+    let isRestoringState = false;
     let captureTimeout;
 
     // --- DOM ELEMENTS ---
@@ -156,7 +159,7 @@ function initializeOfferModule(deps) {
         const renderOptions = (searchText = '') => {
             optionsList.innerHTML = '';
             const filteredOptions = options.filter(opt => opt.toLowerCase().includes(searchText.toLowerCase()));
-            
+
             filteredOptions.forEach(option => {
                 const optionEl = document.createElement('div');
                 optionEl.className = 'filter-option';
@@ -200,7 +203,7 @@ function initializeOfferModule(deps) {
                 e.preventDefault();
                 if (searchInput.value.trim() === '') {
                     activeFilters[filterKey] = [...options]; // Select all
-                    renderOptions(); 
+                    renderOptions();
                     updateBadge();
                     itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
                 }
@@ -222,7 +225,7 @@ function initializeOfferModule(deps) {
                 itemSearchInput.dispatchEvent(new Event('keyup', { bubbles: true }));
             }
         });
-        
+
         const updateBadge = () => {
             const count = activeFilters[filterKey].length;
             badge.textContent = count;
@@ -232,13 +235,13 @@ function initializeOfferModule(deps) {
 
         updateBadge();
     };
-    
+
     const loadAndRenderProductTypeFilter = async () => {
         try {
             const res = await fetch(`${API_URL}/get_sheet_names`);
             if (!res.ok) throw new Error('Failed to load product types');
             const productTypes = await res.json();
-            
+
             if (productTypes.length > 0) {
                 activeFilters.product_type = [...productTypes];
                 createFilterDropdown('product_type', 'Product Type', productTypes);
@@ -253,7 +256,7 @@ function initializeOfferModule(deps) {
             const res = await fetch(`${API_URL}/get_filter_options`);
             if (!res.ok) throw new Error('Failed to load filter options');
             filterOptions = await res.json();
-            
+
             for (const [key, options] of Object.entries(filterOptions)) {
                 if (options.length > 0) {
                     createFilterDropdown(key, key.charAt(0).toUpperCase() + key.slice(1), options);
@@ -274,7 +277,7 @@ function initializeOfferModule(deps) {
     const cleanupSuggestions = () => {
         const dropdown = document.getElementById('offer-description-suggestions');
         if (dropdown) dropdown.remove();
-        
+
         const mainScroller = document.querySelector('main');
         if (mainScroller && activeScrollListener) {
             mainScroller.removeEventListener('scroll', activeScrollListener);
@@ -286,7 +289,7 @@ function initializeOfferModule(deps) {
         activeScrollListener = null;
         activeKeydownHandler = null;
     };
-    
+
     // --- HISTORY MANAGEMENT FUNCTIONS ---
     const captureState = () => {
         if (isRestoringState) return;
@@ -301,37 +304,37 @@ function initializeOfferModule(deps) {
                 visibleColumns: JSON.parse(JSON.stringify(visibleColumns)),
                 searchSettings: JSON.parse(JSON.stringify(searchSettings)),
                 selectedCover: selectedCover,
-                isSummaryPageEnabled: isSummaryPageEnabled, 
-                summaryScopeDescriptions: JSON.parse(JSON.stringify(summaryScopeDescriptions)), 
+                isSummaryPageEnabled: isSummaryPageEnabled,
+                summaryScopeDescriptions: JSON.parse(JSON.stringify(summaryScopeDescriptions)),
                 includeSignature: includeSignature,
-                tncState: { 
+                tncState: {
                     international: tncInternationalCheckbox.checked,
                     local_supply: tncLocalSupplyCheckbox.checked,
                     local_installation: tncLocalInstallationCheckbox.checked,
-                    value: tncTextarea.value 
+                    value: tncTextarea.value
                 },
                 projectName: offerProjectName.textContent
             };
-            
+
             if (history.length > 0) {
                 const lastState = JSON.stringify(history[historyIndex]);
                 if (lastState === JSON.stringify(state)) {
-                    return; 
+                    return;
                 }
             }
 
             if (historyIndex < history.length - 1) {
                 history = history.slice(0, historyIndex + 1);
             }
-            
+
             history.push(state);
             historyIndex++;
-            
+
             if (historyIndex > 0) {
                 setDirty(true);
             }
 
-        }, 250); 
+        }, 250);
     };
 
     const updateFinancialLabelsInDOM = () => {
@@ -357,7 +360,7 @@ function initializeOfferModule(deps) {
         isSummaryPageEnabled = state.isSummaryPageEnabled;
         summaryScopeDescriptions = state.summaryScopeDescriptions || {};
         includeSignature = state.includeSignature === undefined ? true : state.includeSignature;
-        
+
         if(includeSignatureCheckbox) {
             includeSignatureCheckbox.checked = includeSignature;
         }
@@ -369,7 +372,7 @@ function initializeOfferModule(deps) {
             tncTextarea.value = state.tncState.value;
         }
         offerProjectName.textContent = state.projectName;
-        
+
         if (selectedClient) {
             document.getElementById('client-name').textContent = selectedClient.name;
             document.getElementById('client-address').textContent = selectedClient.address;
@@ -379,7 +382,7 @@ function initializeOfferModule(deps) {
             selectedClientInfo.style.display = 'none';
             clientSearchInput.value = '';
         }
-        
+
         for (const key in financials) {
             if (key.startsWith('use_')) continue;
             const input = financialsSection.querySelector(`[data-type="${key}"]`);
@@ -389,7 +392,7 @@ function initializeOfferModule(deps) {
         enableSummaryPageCheckbox.checked = isSummaryPageEnabled;
         searchForeignCheckbox.checked = searchSettings.foreign;
         searchLocalCheckbox.checked = searchSettings.local;
-        
+
         updateFinancialLabelsInDOM();
 
         renderFinancialSummaryUI();
@@ -429,9 +432,9 @@ function initializeOfferModule(deps) {
     const updateInWordsSummary = async (usd, bdt) => {
         const wordsUsdEl = document.getElementById('summary-words-usd');
         const wordsBdtEl = document.getElementById('summary-words-bdt');
-    
+
         if (!wordsUsdEl || !wordsBdtEl) return;
-    
+
         try {
             const response = await fetch(`${API_URL}/convert_to_words`, {
                 method: 'POST',
@@ -439,7 +442,7 @@ function initializeOfferModule(deps) {
                 body: JSON.stringify({ usd_value: usd, bdt_value: bdt })
             });
             const result = await response.json();
-    
+
             if (result.success) {
                 wordsUsdEl.textContent = result.words_usd;
                 wordsBdtEl.textContent = result.words_bdt;
@@ -453,7 +456,7 @@ function initializeOfferModule(deps) {
             wordsBdtEl.textContent = 'Error';
         }
     };
-    
+
     const renderFinancialSummaryUI = () => {
         if (!isSummaryPageEnabled) {
             financialSummaryContainer.style.display = 'none';
@@ -504,22 +507,22 @@ function initializeOfferModule(deps) {
 
         let sub_total_usd = 0;
         let sub_total_bdt = 0;
-        
+
         const scopeOrder = ['foreign', 'localsupply', 'installation'];
         const sortedScopeKeys = Object.keys(scopes).sort((a, b) => {
             const [typeA, subTypeA] = a.split('-');
             const [typeB, subTypeB] = b.split('-');
-    
+
             const indexA = scopeOrder.indexOf(subTypeA);
             const indexB = scopeOrder.indexOf(subTypeB);
-    
+
             if (indexA !== indexB) {
                 return indexA - indexB;
             }
-    
+
             if (typeA < typeB) return -1;
             if (typeA > typeB) return 1;
-    
+
             return 0;
         });
 
@@ -538,10 +541,10 @@ function initializeOfferModule(deps) {
                 </tr>
             `;
         }).join('');
-        
+
         const freight_usd = financials.use_freight && visibleColumns.foreign_price ? parseFloat(financials.freight_foreign_usd || 0) : 0;
         const discount_foreign_usd = financials.use_discount_foreign && visibleColumns.foreign_price ? parseFloat(financials.discount_foreign_usd || 0) : 0;
-        
+
         const isLocalSectionVisible = visibleColumns.local_supply_price || visibleColumns.installation_price;
         const delivery_bdt = financials.use_delivery && isLocalSectionVisible ? parseFloat(financials.delivery_local_bdt || 0) : 0;
         const vat_bdt = financials.use_vat && isLocalSectionVisible ? parseFloat(financials.vat_local_bdt || 0) : 0;
@@ -607,7 +610,7 @@ function initializeOfferModule(deps) {
                 <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-bold text-red-600">(${discount_bdt_total.toLocaleString('en-BD', {minimumFractionDigits: 2})})</td>
             </tr>`;
         }
-        
+
         summaryHtml += `
                      <tr class="bg-slate-100 dark:bg-slate-700">
                         <td colspan="2" class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-right font-extrabold">Grand Total:</td>
@@ -654,7 +657,7 @@ function initializeOfferModule(deps) {
     };
 
     const setupColumnsDropdown = () => {
-        columnsDropdown.innerHTML = ''; 
+        columnsDropdown.innerHTML = '';
         columnsDropdown.innerHTML += `
             <div class="flex items-center space-x-2 p-1">
                 <input type="checkbox" id="toggle-foreign_price" data-col="foreign_price" class="h-4 w-4 rounded" ${visibleColumns.foreign_price ? 'checked' : ''}>
@@ -697,7 +700,7 @@ function initializeOfferModule(deps) {
             `;
         }
     };
-    
+
     const sortOfferItems = () => {
         const indexedItems = offerItems.map((item, index) => ({ item, originalIndex: index }));
 
@@ -714,7 +717,7 @@ function initializeOfferModule(deps) {
                     const bIsForeign = b.item.source_type === 'local';
                     if (aIsForeign && !bIsForeign) return -1;
                     if (!aIsForeign && bIsForeign) return 1;
-                    return a.originalIndex - b.originalIndex; 
+                    return a.originalIndex - b.originalIndex;
                 });
                 break;
             case 'custom':
@@ -724,10 +727,10 @@ function initializeOfferModule(deps) {
         }
         offerItems = indexedItems.map(i => i.item);
     };
-    
+
     const updateSummaryPageCheckboxState = () => {
         const hasForeignItems = visibleColumns.foreign_price && offerItems.some(i => parseFloat(i.foreign_total_usd || 0) > 0);
-        
+
         if (!hasForeignItems && offerItems.length > 0) {
             enableSummaryPageCheckbox.checked = false;
         } else {
@@ -739,16 +742,16 @@ function initializeOfferModule(deps) {
 
     const addDescriptionSuggestionNav = (targetCell, dropdown) => {
         let selectedIdx = -1;
-    
+
         activeKeydownHandler = (e) => {
             const items = Array.from(dropdown.querySelectorAll('.search-result-item'));
             if (!items.length || dropdown.classList.contains('hidden')) return;
-    
+
             let currentSelection = dropdown.querySelector('.bg-sky-100');
             if (currentSelection) {
                 currentSelection.classList.remove('bg-sky-100', 'dark:bg-sky-900');
             }
-    
+
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 selectedIdx = (selectedIdx + 1) % items.length;
@@ -764,13 +767,13 @@ function initializeOfferModule(deps) {
                 cleanupSuggestions();
                 selectedIdx = -1;
             }
-    
+
             if (selectedIdx > -1) {
                 items[selectedIdx].classList.add('bg-sky-100', 'dark:bg-sky-900');
                 items[selectedIdx].scrollIntoView({ block: 'nearest' });
             }
         };
-    
+
         targetCell.addEventListener('keydown', activeKeydownHandler);
     };
 
@@ -793,7 +796,7 @@ function initializeOfferModule(deps) {
                 itemDiv.onclick = () => {
                     const row = targetCell.closest('tr');
                     const itemIndex = parseInt(row.dataset.itemIndex, 10);
-                    
+
                     const newItem = {
                         ...item,
                         qty: offerItems[itemIndex].qty || 1,
@@ -819,7 +822,7 @@ function initializeOfferModule(deps) {
                 dropdown.appendChild(itemDiv);
             });
         }
-        
+
         const mainScroller = document.querySelector('main');
         const updatePosition = () => {
             if (!activeDescriptionCell || !document.body.contains(activeDescriptionCell)) {
@@ -838,12 +841,12 @@ function initializeOfferModule(deps) {
         dropdown.style.width = 'auto';
         dropdown.style.minWidth = `${rect.width}px`;
         dropdown.style.maxWidth = '500px';
-        
+
         activeScrollListener = updatePosition;
         if(mainScroller) mainScroller.addEventListener('scroll', activeScrollListener);
-        
+
         dropdown.classList.remove('hidden');
-        
+
         addDescriptionSuggestionNav(targetCell, dropdown);
     };
 
@@ -863,7 +866,7 @@ function initializeOfferModule(deps) {
             try {
                 const source = searchSettings.foreign && searchSettings.local ? 'all' : searchSettings.foreign ? 'foreign' : 'local';
                 const apiUrl = `${API_URL}/search_items?q=${encodeURIComponent(query)}&role=${currentUser.role}&source=${source}`;
-                
+
                 const res = await fetch(apiUrl);
                 if (!res.ok) throw new Error('Search failed');
                 const items = await res.json();
@@ -905,7 +908,7 @@ function initializeOfferModule(deps) {
             if(opts.colSpan) th.colSpan = opts.colSpan;
             row.appendChild(th);
         };
-        
+
         addHeader(headerRow1, '<i class="fas fa-grip-vertical text-slate-400"></i>', { rowSpan: 2 });
         addHeader(headerRow1, 'SL NO', { rowSpan: 2 });
         addHeader(headerRow1, 'DESCRIPTION', { rowSpan: 2, className: 'w-1/3' });
@@ -930,11 +933,11 @@ function initializeOfferModule(deps) {
         addHeader(headerRow1, 'Action', { rowSpan: 2 });
         offerTableHead.appendChild(headerRow1);
         offerTableHead.appendChild(headerRow2);
-        
+
         offerItems.forEach((item, index) => {
             const row = document.createElement('tr');
             row.dataset.itemIndex = index;
-            
+
             let rowClasses = "border-t border-slate-200 dark:border-slate-700";
             if (item.source_type !== 'foreign' && currentSortOrder !== 'source_foreign') {
                 rowClasses += " bg-slate-100 dark:bg-slate-700/50";
@@ -970,7 +973,7 @@ function initializeOfferModule(deps) {
                     if (isModifiedPrice && h.key === 'installation_price' && currentUser.role === 'admin' && unitPrice > 0 && item.item_code) {
                         showSaveBtn = true;
                     }
-            
+
                     const saveBtnHtml = showSaveBtn
                         ? `<button class="save-price-to-master-btn text-xs text-green-500 hover:text-green-700 p-0.5 ml-1" title="Save this price to master list"
                                    data-item-code="${item.item_code}"
@@ -1047,7 +1050,7 @@ function initializeOfferModule(deps) {
         const freight = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
         const freight_po = financials.use_freight_po ? parseFloat(financials.freight_po_usd || 0) : 0;
         const delivery = financials.use_delivery ? parseFloat(financials.delivery_local_bdt || 0) : 0;
-        
+
         if (financials.use_vat && financials.vat_is_percentage) {
             financials.vat_local_bdt = (subtotal_local * (financials.vat_percentage / 100)).toFixed(2);
             const vatInput = document.querySelector('[data-type="vat_local_bdt"]');
@@ -1061,7 +1064,7 @@ function initializeOfferModule(deps) {
             if (aitInput) aitInput.value = financials.ait_local_bdt;
         }
         const ait = financials.use_ait ? parseFloat(financials.ait_local_bdt || 0) : 0;
-        
+
         const discount_foreign = financials.use_discount_foreign ? parseFloat(financials.discount_foreign_usd || 0) : 0;
         const discount_po = financials.use_discount_po ? parseFloat(financials.discount_po_usd || 0) : 0;
         const discount_local = financials.use_discount_local ? parseFloat(financials.discount_local_bdt || 0) : 0;
@@ -1071,7 +1074,7 @@ function initializeOfferModule(deps) {
         const grandtotal_po = subtotal_po + freight_po - discount_po;
         const grandtotal_local = subtotal_local + delivery + vat + ait - discount_local;
         const grandtotal_installation = subtotal_installation - discount_installation;
-        
+
         document.getElementById('subtotal-foreign').textContent = subtotal_foreign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('subtotal-po').textContent = subtotal_po.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('subtotal-local').textContent = subtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1081,10 +1084,26 @@ function initializeOfferModule(deps) {
         document.getElementById('grandtotal-po').textContent = grandtotal_po.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-local').textContent = grandtotal_local.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        
+
+        const grandtotal_bdt_foreign_val = financials.use_grand_total_bdt ? grandtotal_foreign * offerConfig.bdt_conversion_rate : 0;
+
+        const customs_duty_val = financials.use_customs_duty && grandtotal_bdt_foreign_val > 0
+            ? Math.ceil((grandtotal_bdt_foreign_val * offerConfig.customs_duty_percentage) / 100) * 100
+            : 0;
+
+        const grandTotalBdtEl = document.getElementById('grandtotal-foreign-bdt');
+        if (grandTotalBdtEl) {
+            grandTotalBdtEl.textContent = grandtotal_bdt_foreign_val.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        const customsDutyEl = document.getElementById('customs-duty-bdt');
+        if (customsDutyEl) {
+            customsDutyEl.textContent = customs_duty_val.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
         renderFinancialSummaryUI();
     };
-    
+
     const resetOfferState = () => {
         selectedClient = null; offerItems = []; currentProjectId = null; currentReferenceNumber = null; selectedCover = null;
         isSummaryPageEnabled = true;
@@ -1094,12 +1113,12 @@ function initializeOfferModule(deps) {
         searchSettings = { foreign: true, local: false };
         currentSortOrder = 'custom';
 
-        financials = { 
-            freight_foreign_usd: 0, 
+        financials = {
+            freight_foreign_usd: 0,
             discount_foreign_usd: 0,
             freight_po_usd: 0,
             discount_po_usd: 0,
-            delivery_local_bdt: 0, 
+            delivery_local_bdt: 0,
             vat_local_bdt: 0,
             ait_local_bdt: 0,
             discount_local_bdt: 0,
@@ -1116,12 +1135,14 @@ function initializeOfferModule(deps) {
             vat_is_percentage: true,
             ait_is_percentage: true,
             vat_percentage: 7.5,
-            ait_percentage: 5
+            ait_percentage: 5,
+            use_grand_total_bdt: false,
+            use_customs_duty: false
         };
         setupFinancialsUI();
         updateFinancialSummary();
 
-        visibleColumns = { 
+        visibleColumns = {
             foreign_price: true,
             po_price: false,
             local_supply_price: false,
@@ -1130,10 +1151,10 @@ function initializeOfferModule(deps) {
         clientSearchInput.value = ''; itemSearchInput.value = ''; selectedClientInfo.style.display = 'none';
         if (offerProjectName) offerProjectName.textContent = 'New Financial Offer';
         tncTextarea.value = '';
-        tncInternationalCheckbox.checked = false; 
+        tncInternationalCheckbox.checked = false;
         tncLocalSupplyCheckbox.checked = false;
         tncLocalInstallationCheckbox.checked = false;
-        
+
         if(includeSignatureCheckbox) {
             includeSignatureCheckbox.checked = true;
         }
@@ -1141,7 +1162,7 @@ function initializeOfferModule(deps) {
         enableSummaryPageCheckbox.checked = isSummaryPageEnabled;
         searchForeignCheckbox.checked = searchSettings.foreign;
         searchLocalCheckbox.checked = searchSettings.local;
-        
+
         updateFinancialLabelsInDOM();
         renderOfferTable(); updateActionButtons();
         renderOfferCategoryCheckboxes();
@@ -1152,21 +1173,21 @@ function initializeOfferModule(deps) {
 
         history = [];
         historyIndex = -1;
-        setDirty(false); 
-        setTimeout(() => captureState(), 50); 
+        setDirty(false);
+        setTimeout(() => captureState(), 50);
     };
 
     const updateActionButtons = () => {
         const disabled = offerItems.length === 0 || !selectedClient;
         exportPdfBtn.disabled = disabled; exportXlsxBtn.disabled = disabled; saveProjectBtn.disabled = disabled; saveAsBtn.disabled = disabled;
     };
-    
+
     const fetchAndDisplayCovers = async (searchTerm = '') => {
         try {
             const res = await fetch(`${API_URL}/get_covers?q=${encodeURIComponent(searchTerm)}`);
             if (!res.ok) throw new Error('Failed to fetch covers from server.');
             const covers = await res.json();
-            
+
             coverSearchResults.innerHTML = '';
             if (covers.length > 0) {
                  covers.forEach(cover => {
@@ -1191,7 +1212,7 @@ function initializeOfferModule(deps) {
             showToast(err.message, true);
         }
     };
-    
+
     const suggestCovers = async () => {
         if (!selectedClient) {
             suggestedCoversContainer.innerHTML = '<p class="text-slate-500 col-span-full">Select a client to see suggestions.</p>';
@@ -1200,7 +1221,7 @@ function initializeOfferModule(deps) {
 
         const clientNameParts = selectedClient.name.toLowerCase().split(' ').filter(p => p.length > 2);
         const categories = [...new Set(offerItems.map(item => item.make))].map(c => c.toLowerCase());
-        
+
         try {
             const res = await fetch(`${API_URL}/get_covers`);
             if (!res.ok) throw new Error('Failed to fetch suggestions.');
@@ -1256,8 +1277,8 @@ function initializeOfferModule(deps) {
                     items: offerItems,
                     visibleColumns: visibleColumns
                 });
-                currentReferenceNumber = refForUpload; 
-                offerProjectName.textContent = refForUpload; 
+                currentReferenceNumber = refForUpload;
+                offerProjectName.textContent = refForUpload;
                 showToast(`Generated project reference: ${refForUpload}`, false);
             } catch (err) {
                 showToast(err.message, true);
@@ -1280,8 +1301,8 @@ function initializeOfferModule(deps) {
 
             if (result.success) {
                 showToast('Custom cover uploaded successfully.', false);
-                selectedCover = result.savedFilename; 
-                renderSelectedCover(); 
+                selectedCover = result.savedFilename;
+                renderSelectedCover();
                 suggestCovers();
                 captureState();
             } else {
@@ -1319,7 +1340,7 @@ function initializeOfferModule(deps) {
 
             const payload = {
                 projectId: idToSave, referenceNumber: refToSave, client: selectedClient,
-                items: offerItems, financials, 
+                items: offerItems, financials,
                 financialLabels,
                 user: currentUser, projectType: 'offer',
                 selected_cover: selectedCover,
@@ -1329,11 +1350,11 @@ function initializeOfferModule(deps) {
                 summaryScopeDescriptions,
                 includeSignature: includeSignature,
                 categories: checkedCategories,
-                tncState: { 
+                tncState: {
                     international: tncInternationalCheckbox.checked,
                     local_supply: tncLocalSupplyCheckbox.checked,
                     local_installation: tncLocalInstallationCheckbox.checked,
-                    value: tncTextarea.value 
+                    value: tncTextarea.value
                 }
             };
             const response = await fetch(`${API_URL}/project`, {
@@ -1356,12 +1377,12 @@ function initializeOfferModule(deps) {
         const button = fileType === 'xlsx' ? exportXlsxBtn : exportPdfBtn;
         button.innerHTML = `<div class="loader !w-4 !h-4 !border-2"></div><span class="ml-2">Generating...</span>`;
         button.disabled = true;
-    
+
         try {
             const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
             const termsAndConditions = tncTextarea.value;
             let refForExport = currentReferenceNumber;
-    
+
             if (!refForExport) {
                 refForExport = NameController.generateOfferReference({
                     clientName: selectedClient.name,
@@ -1372,19 +1393,19 @@ function initializeOfferModule(deps) {
                 currentReferenceNumber = refForExport;
                 offerProjectName.textContent = refForExport;
             }
-            
+
             const filename = NameController.generateOfferFilename({
                 referenceNumber: refForExport,
                 fileType: fileType
             });
-            
+
             const summaryScopes = {};
             offerItems.forEach(item => {
                 const type = item.make || 'MISC';
                 const foreignValue = parseFloat(item.foreign_total_usd || 0);
                 const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
                 const installationValue = parseFloat(item.installation_total_bdt || 0);
-    
+
                 if (foreignValue > 0) {
                     const scopeKey = `${type}-foreign`;
                     if (!summaryScopes[scopeKey]) {
@@ -1416,7 +1437,7 @@ function initializeOfferModule(deps) {
                 isSummaryPageEnabled,
                 summaryScopes,
                 includeSignature: includeSignature,
-                filename: filename, 
+                filename: filename,
                 financialLabels
             };
 
@@ -1424,7 +1445,7 @@ function initializeOfferModule(deps) {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             });
             if (!exportRes.ok) throw new Error(`Server error: ${exportRes.statusText}`);
-    
+
             const blob = await exportRes.blob();
             const a = document.createElement('a');
             a.href = window.URL.createObjectURL(blob);
@@ -1458,14 +1479,14 @@ function initializeOfferModule(deps) {
             captureState();
         }
     };
-    
+
     // --- EVENT LISTENERS ---
-    
+
     const applyCustomMarkup = () => {
         if (currentUser.role !== 'admin' || !adminMarkupInput) return;
 
         const markupPercent = parseFloat(adminMarkupInput.value);
-        
+
         if (isNaN(markupPercent) || markupPercent < 0) {
             return;
         }
@@ -1477,7 +1498,7 @@ function initializeOfferModule(deps) {
 
             if (poPrice > 0) {
                 item.foreign_price_usd = (poPrice * markupFactor).toFixed(2);
-                
+
                 if (typeof item.isCustom !== 'object' || item.isCustom === null) {
                     item.isCustom = {};
                 }
@@ -1555,7 +1576,7 @@ function initializeOfferModule(deps) {
         renderFinancialSummaryUI();
         captureState();
     });
-    
+
     if(includeSignatureCheckbox) {
         includeSignatureCheckbox.addEventListener('change', (e) => {
             includeSignature = e.target.checked;
@@ -1573,7 +1594,7 @@ function initializeOfferModule(deps) {
 
     if (newOfferBtn) {
         newOfferBtn.addEventListener('click', async () => {
-            if (getDirty()) { 
+            if (getDirty()) {
                 const confirmed = await showConfirmModal(
                     "You have unsaved changes that will be lost. Are you sure you want to start a new offer?",
                     "Unsaved Changes",
@@ -1625,7 +1646,7 @@ function initializeOfferModule(deps) {
             captureState();
         }
     });
-    
+
     window.addEventListener('click', (e) => {
         if (!columnsDropdown.classList.contains('hidden') && !columnsToggleBtn.contains(e.target) && !columnsDropdown.contains(e.target)) {
             columnsDropdown.classList.add('hidden');
@@ -1662,7 +1683,7 @@ function initializeOfferModule(deps) {
                 installation_price_bdt: '0.00',
                 installation_total_bdt: '0.00',
                 isCustom: {},
-                source_type: 'local', 
+                source_type: 'local',
                 make: 'FPS'
             };
             offerItems.push(newItem);
@@ -1675,7 +1696,7 @@ function initializeOfferModule(deps) {
             renderOfferTable();
             updateActionButtons();
             captureState();
-            
+
             const newRow = offerTableBody.querySelector(`tr[data-item-index="${offerItems.length - 1}"]`);
             if (newRow) {
                 const descCell = newRow.querySelector('[data-field="description"]');
@@ -1740,19 +1761,21 @@ function initializeOfferModule(deps) {
             { useKey: 'use_vat', type: 'vat' },
             { useKey: 'use_ait', type: 'ait' },
             { useKey: 'use_discount_local', type: 'discount_local' },
-            { useKey: 'use_discount_installation', type: 'discount_installation' }
+            { useKey: 'use_discount_installation', type: 'discount_installation' },
+            { useKey: 'use_grand_total_bdt', type: 'grand_total_bdt' },
+            { useKey: 'use_customs_duty', type: 'customs_duty' }
         ];
 
         allToggles.forEach(({ useKey, type }) => {
             const addBtn = financialsSection.querySelector(`.add-charge-btn[data-type="${type}"]`);
-            if (!addBtn) return; 
+            if (!addBtn) return;
             const removeBtn = financialsSection.querySelector(`.remove-charge-btn[data-type="${type}"]`);
-            const input = addBtn.closest('.flex').querySelector('.financial-input');
-            
+            const valueDisplay = addBtn.closest('.flex').querySelector('.financial-input, .financial-value');
+
             const isVisible = financials[useKey];
-            
-            input.classList.toggle('hidden', !isVisible);
-            removeBtn.classList.toggle('hidden', !isVisible);
+
+            if (valueDisplay) valueDisplay.classList.toggle('hidden', !isVisible);
+            if (removeBtn) removeBtn.classList.toggle('hidden', !isVisible);
             addBtn.classList.toggle('hidden', isVisible);
         });
         updateFinancialSummary();
@@ -1761,7 +1784,7 @@ function initializeOfferModule(deps) {
     financialsSection.addEventListener('click', (e) => {
         const button = e.target.closest('button');
         if(!button) return;
-        
+
         const type = button.dataset.type;
         if (!type) return;
 
@@ -1774,12 +1797,12 @@ function initializeOfferModule(deps) {
             stateChanged = true;
         } else if(button.classList.contains('remove-charge-btn')) {
             financials[`use_${type}`] = false;
-            
+
             const input = button.closest('.flex').querySelector('.financial-input');
             if (input) {
                 const valueKey = input.dataset.type;
                 financials[valueKey] = 0;
-                input.value = 0; 
+                input.value = 0;
             }
             stateChanged = true;
         }
@@ -1789,7 +1812,7 @@ function initializeOfferModule(deps) {
             captureState();
         }
     });
-    
+
     if (coverUploadZone) {
         coverUploadZone.addEventListener('dragover', (e) => {
             e.preventDefault(); e.stopPropagation();
@@ -1827,7 +1850,7 @@ function initializeOfferModule(deps) {
     createSearchHandler({
         searchInput: clientSearchInput, resultsContainer: clientSearchResults, apiEndpoint: `${API_URL}/search_clients`,
         buildQuery: (query) => `q=${encodeURIComponent(query)}`,
-        renderResults: renderClientResults, 
+        renderResults: renderClientResults,
         onResultSelected: (client) => {
             selectedClient = { name: client.client_name, address: client.client_address };
             document.getElementById('client-name').textContent = selectedClient.name;
@@ -1851,7 +1874,7 @@ function initializeOfferModule(deps) {
             }
             return url;
         },
-        renderResults: renderItemResults, 
+        renderResults: renderItemResults,
         onResultSelected: (item) => {
             const newItem = {
                 ...item, qty: 1, unit: item.unit || 'Pcs',
@@ -1881,17 +1904,17 @@ function initializeOfferModule(deps) {
                 tncLocalSupplyCheckbox.checked = true;
                 tncLocalSupplyCheckbox.dispatchEvent(new Event('change'));
             }
-            
+
             currentSortOrder = 'custom';
             setupSortDropdown();
-            renderOfferTable(); 
-            renderOfferCategoryCheckboxes(); 
+            renderOfferTable();
+            renderOfferCategoryCheckboxes();
             updateActionButtons();
-            itemSearchInput.focus(); 
+            itemSearchInput.focus();
             captureState();
         }
     });
-    
+
     searchForeignCheckbox.addEventListener('change', (e) => {
         searchSettings.foreign = e.target.checked;
         itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
@@ -1902,7 +1925,7 @@ function initializeOfferModule(deps) {
         itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
         captureState();
     });
-    
+
     offerTableBody.addEventListener('paste', e => {
         const target = e.target;
         const field = target.dataset.field;
@@ -1921,7 +1944,7 @@ function initializeOfferModule(deps) {
         const row = target.closest('tr'); if (!row) return;
         const itemIndex = parseInt(row.dataset.itemIndex, 10);
         const item = offerItems[itemIndex]; if (!item) return;
-    
+
         const field = target.dataset.field;
         if (field) {
             if (field === 'description') {
@@ -1934,7 +1957,7 @@ function initializeOfferModule(deps) {
                 } else {
                     item[field] = rawValue;
                 }
-    
+
                 if (field.includes('price')) {
                     if (typeof item.isCustom !== 'object' || item.isCustom === null) {
                         item.isCustom = {};
@@ -1942,13 +1965,13 @@ function initializeOfferModule(deps) {
                     item.isCustom[field] = true;
                 }
             }
-            
+
             const qty = parseFloat(item.qty || 1);
             item.foreign_total_usd = (qty * parseFloat(item.foreign_price_usd || 0)).toFixed(2);
             item.local_supply_total_bdt = (qty * parseFloat(item.local_supply_price_bdt || 0)).toFixed(2);
             item.installation_total_bdt = (qty * parseFloat(item.installation_price_bdt || 0)).toFixed(2);
             item.po_total_usd = (qty * parseFloat(item.po_price_usd || 0)).toFixed(2);
-    
+
             const updateTotalCell = (totalField, value, currency) => {
                 const cell = row.querySelector(`[data-field="${totalField}"]`);
                 if (cell) cell.textContent = parseFloat(value).toLocaleString(currency === 'USD' ? 'en-US' : 'en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1957,20 +1980,20 @@ function initializeOfferModule(deps) {
             updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt, 'BDT');
             updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
             updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
-            
+
             if(field.includes('price')) {
                 const mainScroller = document.querySelector('main');
                 const scrollPos = mainScroller.scrollTop;
-                
+
                 let selection = window.getSelection();
                 let cursorPosition = 0;
                 if (selection.rangeCount > 0) {
                     let range = selection.getRangeAt(0);
                     cursorPosition = range.startOffset;
                 }
-                
+
                 renderOfferTable();
-    
+
                 mainScroller.scrollTo({ top: scrollPos, behavior: 'instant' });
                 const newRow = offerTableBody.querySelector(`tr[data-item-index="${itemIndex}"]`);
                 if (newRow) {
@@ -1993,8 +2016,8 @@ function initializeOfferModule(deps) {
                     }
                 }
             }
-    
-            updateFinancialSummary(); 
+
+            updateFinancialSummary();
             if(field === 'make') {
                 renderFinancialSummaryUI();
             }
@@ -2005,7 +2028,7 @@ function initializeOfferModule(deps) {
     offerTableBody.addEventListener('click', async (e) => {
         const button = e.target.closest('button');
         if (!button) return;
-        
+
         const row = button.closest('tr');
         if (!row) return;
 
@@ -2103,7 +2126,7 @@ function initializeOfferModule(deps) {
         draggedItemIndex = null;
     });
 
-    
+
     if (autoFillBtn) {
         autoFillBtn.addEventListener('click', async () => {
             const confirmed = await showConfirmModal(
@@ -2113,10 +2136,10 @@ function initializeOfferModule(deps) {
                 'Proceed'
             );
             if (!confirmed) return;
-    
+
             autoFillBtn.disabled = true;
             autoFillBtn.innerHTML = `<div class="loader !w-4 !h-4 !border-2"></div><span class="ml-2">Processing...</span>`;
-    
+
             try {
                 const response = await fetch(`${API_URL}/autofill_master_prices`, {
                     method: 'POST',
@@ -2144,7 +2167,7 @@ function initializeOfferModule(deps) {
 
     saveAsBtn.addEventListener('click', () => {
         if (saveAsBtn.disabled) return;
-        
+
         let suggestedName = '';
         if (currentReferenceNumber) {
             const versionMatch = currentReferenceNumber.match(/(V)(\d+)$/);
@@ -2168,7 +2191,7 @@ function initializeOfferModule(deps) {
         document.getElementById('save-as-name').value = suggestedName;
         saveAsModal.classList.remove('hidden');
     });
-    
+
     saveProjectBtn.addEventListener('click', () => {
         if (saveProjectBtn.disabled) return;
         if (!currentProjectId) {
@@ -2180,20 +2203,20 @@ function initializeOfferModule(deps) {
 
     exportPdfBtn.addEventListener('click', () => handleExport('pdf'));
     exportXlsxBtn.addEventListener('click', () => handleExport('xlsx'));
-    
+
     tncInternationalCheckbox.addEventListener('change', updateTncTextarea);
     tncLocalSupplyCheckbox.addEventListener('change', updateTncTextarea);
     tncLocalInstallationCheckbox.addEventListener('change', updateTncTextarea);
 
-    columnsToggleBtn.addEventListener('click', (e) => { 
-        e.stopPropagation(); 
-        columnsDropdown.classList.toggle('hidden'); 
+    columnsToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        columnsDropdown.classList.toggle('hidden');
     });
-    columnsDropdown.addEventListener('change', (e) => { 
-        if (e.target.type === 'checkbox') { 
+    columnsDropdown.addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
             const col = e.target.dataset.col;
             const isChecked = e.target.checked;
-            visibleColumns[col] = isChecked; 
+            visibleColumns[col] = isChecked;
 
             const syncTncCheckbox = (tncCheckbox, shouldBeChecked) => {
                 if (shouldBeChecked && !tncCheckbox.checked) {
@@ -2208,11 +2231,11 @@ function initializeOfferModule(deps) {
             if (col === 'foreign_price') syncTncCheckbox(tncInternationalCheckbox, isChecked);
             else if (col === 'local_supply_price') syncTncCheckbox(tncLocalSupplyCheckbox, isChecked);
             else if (col === 'installation_price') syncTncCheckbox(tncLocalInstallationCheckbox, isChecked);
-            renderOfferTable(); 
+            renderOfferTable();
             captureState();
-        } 
+        }
     });
-    
+
     sortToggleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         sortDropdown.classList.toggle('hidden');
@@ -2229,7 +2252,7 @@ function initializeOfferModule(deps) {
     window.addItemsToOffer = (itemsToAdd) => {
         if (!itemsToAdd || itemsToAdd.length === 0) return;
         itemsToAdd.forEach(item => {
-            const newItem = { ...item }; 
+            const newItem = { ...item };
             const qty = parseFloat(newItem.qty || 1);
             newItem.foreign_total_usd = (qty * parseFloat(newItem.foreign_price_usd || 0)).toFixed(2);
             newItem.local_supply_total_bdt = (qty * parseFloat(newItem.local_supply_price_bdt || 0)).toFixed(2);
@@ -2248,7 +2271,7 @@ function initializeOfferModule(deps) {
             if (parseFloat(newItem.installation_price_bdt) > 0 && !visibleColumns.installation_price) visibleColumns.installation_price = true;
             offerItems.push(newItem);
         });
-        setupColumnsDropdown(); 
+        setupColumnsDropdown();
         renderOfferTable(); renderOfferCategoryCheckboxes(); updateActionButtons(); captureState();
     };
 
@@ -2262,13 +2285,13 @@ function initializeOfferModule(deps) {
         updateProjectState(projectData);
         selectedClient = projectData.client;
         offerItems = projectData.items;
-        
-        const defaultFinancials = { 
-            freight_foreign_usd: 0, 
+
+        const defaultFinancials = {
+            freight_foreign_usd: 0,
             discount_foreign_usd: 0,
             freight_po_usd: 0,
             discount_po_usd: 0,
-            delivery_local_bdt: 0, 
+            delivery_local_bdt: 0,
             vat_local_bdt: 0,
             ait_local_bdt: 0,
             discount_local_bdt: 0,
@@ -2285,7 +2308,9 @@ function initializeOfferModule(deps) {
             vat_is_percentage: true,
             ait_is_percentage: true,
             vat_percentage: 7.5,
-            ait_percentage: 5
+            ait_percentage: 5,
+            use_grand_total_bdt: false,
+            use_customs_duty: false
         };
         financials = { ...defaultFinancials, ...(projectData.financials || {}) };
 
@@ -2296,14 +2321,14 @@ function initializeOfferModule(deps) {
                 input.value = financials[key] || 0;
             }
         }
-        
+
         financialLabels = projectData.financialLabels || getDefaultFinancialLabels();
         searchSettings = projectData.searchSettings || { foreign: true, local: false };
         selectedCover = projectData.selected_cover || null;
         isSummaryPageEnabled = projectData.isSummaryPageEnabled === undefined ? true : projectData.isSummaryPageEnabled;
         summaryScopeDescriptions = projectData.summaryScopeDescriptions || {};
         includeSignature = projectData.includeSignature === undefined ? true : projectData.includeSignature;
-        
+
         if (includeSignatureCheckbox) {
             includeSignatureCheckbox.checked = includeSignature;
         }
@@ -2320,7 +2345,7 @@ function initializeOfferModule(deps) {
             tncLocalInstallationCheckbox.checked = projectData.tncState.local_installation;
             tncTextarea.value = projectData.tncState.value;
         }
-        
+
         offerProjectName.textContent = projectData.referenceNumber;
         document.getElementById('client-name').textContent = selectedClient.name;
         document.getElementById('client-address').textContent = selectedClient.address;
@@ -2333,7 +2358,7 @@ function initializeOfferModule(deps) {
         setupFinancialsUI();
         enableSummaryPageCheckbox.checked = isSummaryPageEnabled;
         renderFinancialSummaryUI();
-        setupColumnsDropdown(); 
+        setupColumnsDropdown();
         setupSortDropdown();
         renderOfferTable();
         updateActionButtons();
@@ -2344,9 +2369,9 @@ function initializeOfferModule(deps) {
         history = [];
         historyIndex = -1;
         setDirty(false);
-        setTimeout(() => captureState(), 50); 
+        setTimeout(() => captureState(), 50);
     };
-    
+
     window.performReplaceInOffer = (findText, replaceText, isCaseSensitive, isBold) => {
         if (!offerItems || offerItems.length === 0) {
             showToast('No items to perform replacement on.', true);
@@ -2357,7 +2382,7 @@ function initializeOfferModule(deps) {
         const escapedFindText = findText.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const regexFlags = isCaseSensitive ? 'g' : 'gi';
         const regex = new RegExp(escapedFindText, regexFlags);
-        
+
         let replacementsMade = 0;
         offerItems.forEach(item => {
             if (item.description) {
@@ -2379,6 +2404,22 @@ function initializeOfferModule(deps) {
         }
     };
 
+    const fetchOfferConfig = async () => {
+        try {
+            const res = await fetch(`${API_URL}/get_offer_config`);
+            const result = await res.json();
+            if (result.success) {
+                offerConfig = {
+                    bdt_conversion_rate: result.bdt_conversion_rate,
+                    customs_duty_percentage: result.customs_duty_percentage
+                };
+            }
+        } catch (error) {
+            console.error('Failed to fetch offer config:', error);
+            showToast('Could not load server configuration, using defaults.', true);
+        }
+    };
+
     if (adminToolsDiv) {
         adminToolsDiv.classList.add('hidden');
     }
@@ -2388,4 +2429,5 @@ function initializeOfferModule(deps) {
     resetOfferState();
     loadAndRenderFilters();
     loadAndRenderProductTypeFilter();
+    fetchOfferConfig();
 }
