@@ -132,11 +132,11 @@
                         
                         <div class="flex justify-between items-center">
                             <span>
-                                <span id="grand-total-bdt-label" contenteditable="true" data-label-key="grandtotalForeignBdt">Grand Total in BDT:</span>
-                                <button class="remove-charge-btn text-red-500 hidden" data-type="grand_total_bdt">&times;</button>
-                                <button class="add-charge-btn text-green-500" data-type="grand_total_bdt">+</button>
+                                <span id="total-in-bdt-label" contenteditable="true" data-label-key="totalInBdt">Total in BDT:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="total_in_bdt">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="total_in_bdt">+</button>
                             </span>
-                            <input type="number" data-type="grandtotal_foreign_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                            <input type="number" data-type="total_in_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
                         </div>
                         <div class="flex justify-between items-center">
                             <span>
@@ -145,6 +145,10 @@
                                 <button class="add-charge-btn text-green-500" data-type="customs_duty">+</button>
                             </span>
                             <input type="number" data-type="customs_duty_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                        </div>
+                        <div id="foreign-grand-total-bdt-wrapper" class="flex justify-between font-bold text-base hidden">
+                            <span id="foreign-grand-total-bdt-label">Grand Total (BDT):</span>
+                            <span id="foreign-grand-total-bdt-value"></span>
                         </div>
                         </div>
                 </div>
