@@ -31,6 +31,10 @@ function initializeOfferModule(deps) {
         freight: 'Freight:',
         discountForeign: 'Discount:',
         grandtotalForeign: 'Grand Total, Ex-Works (USD):',
+        // START OF REVISED SECTION
+        grandtotalForeignBdt: 'Grand Total in BDT:',
+        customsDuty: 'Customs Duty:',
+        // END OF REVISED SECTION
         poPrice: 'PO Price',
         subtotalPO: 'Subtotal:',
         freightPO: 'Freight:',
@@ -51,8 +55,8 @@ function initializeOfferModule(deps) {
 
     let financialLabels = getDefaultFinancialLabels();
 
-    let financials = {
-        freight_foreign_usd: 0,
+    let financials = { 
+        freight_foreign_usd: 0, 
         discount_foreign_usd: 0,
         freight_po_usd: 0,
         discount_po_usd: 0,
