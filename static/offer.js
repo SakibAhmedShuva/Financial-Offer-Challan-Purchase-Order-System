@@ -25,14 +25,14 @@ function initializeOfferModule(deps) {
     let activeFilters = { make: [], approvals: [], model: [], product_type: [] };
 
 
-    const getDefaultFinancialLabels = () => ({
+const getDefaultFinancialLabels = () => ({
         foreignPrice: 'Foreign Price',
         subtotalForeign: 'Subtotal:',
         freight: 'Freight:',
         discountForeign: 'Discount:',
         grandtotalForeign: 'Grand Total, Ex-Works (USD):',
         // START OF REVISED SECTION
-        grandtotalForeignBdt: 'Grand Total in BDT:',
+        totalInBdt: 'Total in BDT:', // Renamed from grandtotalForeignBdt
         customsDuty: 'Customs Duty:',
         // END OF REVISED SECTION
         poPrice: 'PO Price',
