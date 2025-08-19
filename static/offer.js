@@ -79,7 +79,13 @@ function initializeOfferModule(deps) {
         vat_percentage: 7.5,
         ait_percentage: 5,
         use_grand_total_bdt: false,
-        use_customs_duty: false
+        use_customs_duty: false,
+        // START OF REVISED SECTION
+        grandtotal_foreign_bdt: 0,
+        customs_duty_bdt: 0,
+        grand_total_bdt_is_auto: true,
+        customs_duty_is_auto: true
+        // END OF REVISED SECTION
     };
     let visibleColumns = {
         foreign_price: true,
