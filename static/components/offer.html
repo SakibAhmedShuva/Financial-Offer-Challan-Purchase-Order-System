@@ -129,23 +129,24 @@
                         </div>
                         <hr class="dark:border-slate-600 my-1">
                         <div class="flex justify-between font-bold text-base"><span id="grandtotal-foreign-label" contenteditable="true" data-label-key="grandtotalForeign">Grand Total (USD):</span> <span id="grandtotal-foreign"></span></div>
+                        
                         <div class="flex justify-between items-center">
                             <span>
-                                <span id="grand-total-bdt-label">Grand Total in BDT:</span>
+                                <span id="grand-total-bdt-label" contenteditable="true" data-label-key="grandtotalForeignBdt">Grand Total in BDT:</span>
                                 <button class="remove-charge-btn text-red-500 hidden" data-type="grand_total_bdt">&times;</button>
                                 <button class="add-charge-btn text-green-500" data-type="grand_total_bdt">+</button>
                             </span>
-                            <span id="grandtotal-foreign-bdt" class="financial-value font-medium hidden"></span>
+                            <input type="number" data-type="grandtotal_foreign_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
                         </div>
                         <div class="flex justify-between items-center">
                             <span>
-                                <span id="customs-duty-label">Customs Duty:</span>
+                                <span id="customs-duty-label" contenteditable="true" data-label-key="customsDuty">Customs Duty:</span>
                                 <button class="remove-charge-btn text-red-500 hidden" data-type="customs_duty">&times;</button>
                                 <button class="add-charge-btn text-green-500" data-type="customs_duty">+</button>
                             </span>
-                            <span id="customs-duty-bdt" class="financial-value font-medium hidden"></span>
+                            <input type="number" data-type="customs_duty_bdt" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
                         </div>
-                    </div>
+                        </div>
                 </div>
                 <div id="local-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
                     <h4 id="local-price-label" contenteditable="true" data-label-key="localPrice" class="font-bold text-lg mb-2">Local Supply Price</h4>
