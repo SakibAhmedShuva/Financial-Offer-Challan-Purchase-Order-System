@@ -24,7 +24,6 @@
             </button>
             <p class="text-sm text-red-700 dark:text-red-300">This will attempt to fill in all missing/modified installation prices in the master price lists.</p>
         </div>
-        <!-- NEW: Custom Markup Input -->
         <div class="flex items-center gap-4 mt-4">
             <label for="admin-markup-input" class="text-sm font-medium text-red-700 dark:text-red-300">Custom Markup (%):</label>
             <input type="number" id="admin-markup-input" class="w-24 p-2 bg-white dark:bg-slate-800 border border-red-300 dark:border-red-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="e.g., 5">
@@ -65,13 +64,11 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- MODIFIED: Filter container -->
+
                 <div class="mb-4">
                     <div id="offer-excel-filters" class="flex flex-wrap gap-2 items-center">
                         <span class="text-slate-500 text-sm font-medium">Filter by:</span>
-                        <!-- Searchable dropdowns will be inserted here by offer.js -->
-                    </div>
+                        </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
@@ -107,7 +104,7 @@
         <div class="overflow-x-auto border-t border-b border-slate-200 dark:border-slate-700"><table class="w-full text-left"><thead id="offer-table-head"></thead><tbody id="offer-table-body"></tbody></table></div>
         <div id="offer-table-actions" class="mt-4 hidden"><button id="add-custom-item-btn" class="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600"><i class="fas fa-plus mr-2"></i>Add Custom Item</button></div>
         <p id="table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the offer.</p>
-        
+
         <div id="financials-section" class="mt-6 hidden">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div id="foreign-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
@@ -115,7 +112,7 @@
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between"><span id="subtotal-foreign-label" contenteditable="true" data-label-key="subtotalForeign">Subtotal:</span> <span id="subtotal-foreign" class="font-medium"></span></div>
                         <div class="flex justify-between items-center">
-                            <span> 
+                            <span>
                                 <span id="freight-label" contenteditable="true" data-label-key="freight">Freight:</span>
                                 <button class="remove-charge-btn text-red-500 hidden" data-type="freight">&times;</button>
                                 <button class="add-charge-btn text-green-500" data-type="freight">+</button>
@@ -132,6 +129,22 @@
                         </div>
                         <hr class="dark:border-slate-600 my-1">
                         <div class="flex justify-between font-bold text-base"><span id="grandtotal-foreign-label" contenteditable="true" data-label-key="grandtotalForeign">Grand Total (USD):</span> <span id="grandtotal-foreign"></span></div>
+                        <div class="flex justify-between items-center">
+                            <span>
+                                <span id="grand-total-bdt-label">Grand Total in BDT:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="grand_total_bdt">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="grand_total_bdt">+</button>
+                            </span>
+                            <span id="grandtotal-foreign-bdt" class="financial-value font-medium hidden"></span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span>
+                                <span id="customs-duty-label">Customs Duty:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="customs_duty">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="customs_duty">+</button>
+                            </span>
+                            <span id="customs-duty-bdt" class="financial-value font-medium hidden"></span>
+                        </div>
                     </div>
                 </div>
                 <div id="local-summary" class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
@@ -195,7 +208,7 @@
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between"><span id="subtotal-po-label" contenteditable="true" data-label-key="subtotalPO">Subtotal:</span> <span id="subtotal-po" class="font-medium"></span></div>
                         <div class="flex justify-between items-center">
-                            <span> 
+                            <span>
                                 <span id="freight-po-label" contenteditable="true" data-label-key="freightPO">Freight:</span>
                                 <button class="remove-charge-btn text-red-500 hidden" data-type="freight_po">&times;</button>
                                 <button class="add-charge-btn text-green-500" data-type="freight_po">+</button>
