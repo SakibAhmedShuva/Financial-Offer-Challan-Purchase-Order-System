@@ -81,9 +81,11 @@ const getDefaultFinancialLabels = () => ({
         use_grand_total_bdt: false,
         use_customs_duty: false,
         // START OF REVISED SECTION
-        grandtotal_foreign_bdt: 0,
+        use_total_in_bdt: false, // Renamed from use_grand_total_bdt
+        use_customs_duty: false,
+        total_in_bdt: 0, // Renamed from grandtotal_foreign_bdt
         customs_duty_bdt: 0,
-        grand_total_bdt_is_auto: true,
+        total_in_bdt_is_auto: true, // Renamed from grand_total_bdt_is_auto
         customs_duty_is_auto: true
         // END OF REVISED SECTION
     };
