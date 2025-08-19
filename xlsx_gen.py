@@ -565,6 +565,21 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         if has_additional_charges:
             if freight > 0 and is_foreign_visible:
                 summary_data_to_write.append({'label': financial_labels.get('freight', 'Sea Freight:'), 'usd': freight, 'bdt': None})
+            
+            # START OF CORRECTION
+            # Add Grand Total BDT and Customs Duty to the summary if they are used
+            if financials.get('use_grand_total_bdt'):
+                grand_total_bdt_foreign = safe_float(financials.get('grandtotal_foreign_bdt', 0))
+                # Add it to the BDT column if local part is not visible, otherwise it might look confusing.
+                if not is_local_part_visible:
+                     summary_data_to_write.append({'label': financial_labels.get('grandtotalForeignBdt', 'Grand Total in BDT:'), 'usd': None, 'bdt': grand_total_bdt_foreign})
+
+            if financials.get('use_customs_duty'):
+                customs_duty = safe_float(financials.get('customs_duty_bdt', 0))
+                if not is_local_part_visible:
+                    summary_data_to_write.append({'label': financial_labels.get('customsDuty', 'Customs Duty:'), 'usd': None, 'bdt': customs_duty})
+            # END OF CORRECTION
+
             if is_local_part_visible:
                 if delivery > 0:
                     summary_data_to_write.append({'label': financial_labels.get('delivery', 'Delivery Charge:'), 'usd': None, 'bdt': delivery})
