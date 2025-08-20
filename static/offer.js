@@ -78,8 +78,6 @@ const getDefaultFinancialLabels = () => ({
         ait_is_percentage: true,
         vat_percentage: 7.5,
         ait_percentage: 5,
-        use_grand_total_bdt: false,
-        use_customs_duty: false,
         // START OF REVISED SECTION
         use_total_in_bdt: false, // Renamed from use_grand_total_bdt
         use_customs_duty: false,
@@ -1098,24 +1096,35 @@ const getDefaultFinancialLabels = () => ({
         document.getElementById('grandtotal-installation').textContent = grandtotal_installation.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
         // START OF CORRECTED SECTION
-        // This block now correctly handles auto-calculation vs. manual override.
-        if (financials.use_grand_total_bdt && financials.grand_total_bdt_is_auto) {
-            financials.grandtotal_foreign_bdt = (grandtotal_foreign * offerConfig.bdt_conversion_rate);
+        if (financials.use_total_in_bdt && financials.total_in_bdt_is_auto) {
+            financials.total_in_bdt = (grandtotal_foreign * offerConfig.bdt_conversion_rate);
         }
-
-        const grandtotal_bdt_val = financials.use_grand_total_bdt ? parseFloat(financials.grandtotal_foreign_bdt || 0) : 0;
-
-        if (financials.use_customs_duty && financials.customs_duty_is_auto && grandtotal_bdt_val > 0) {
-            financials.customs_duty_bdt = Math.ceil((grandtotal_bdt_val * offerConfig.customs_duty_percentage) / 100) * 100;
+    
+        const total_in_bdt_val = financials.use_total_in_bdt ? parseFloat(financials.total_in_bdt || 0) : 0;
+    
+        if (financials.use_customs_duty && financials.customs_duty_is_auto && total_in_bdt_val > 0) {
+            // Round up to the nearest 100
+            financials.customs_duty_bdt = Math.ceil((total_in_bdt_val * offerConfig.customs_duty_percentage) / 100) * 100;
         }
         
         const customs_duty_val = financials.use_customs_duty ? parseFloat(financials.customs_duty_bdt || 0) : 0;
-
-        const grandTotalBdtInput = document.querySelector('[data-type="grandtotal_foreign_bdt"]');
-        if (grandTotalBdtInput) grandTotalBdtInput.value = grandtotal_bdt_val.toFixed(2);
-
+    
+        const totalInBdtInput = document.querySelector('[data-type="total_in_bdt"]');
+        if (totalInBdtInput) totalInBdtInput.value = total_in_bdt_val.toFixed(2);
+    
         const customsDutyInput = document.querySelector('[data-type="customs_duty_bdt"]');
         if (customsDutyInput) customsDutyInput.value = customs_duty_val.toFixed(2);
+
+        const grandTotalBdtWrapper = document.getElementById('foreign-grand-total-bdt-wrapper');
+        if (grandTotalBdtWrapper) {
+            if (financials.use_total_in_bdt || financials.use_customs_duty) {
+                const final_grand_total_bdt = total_in_bdt_val + customs_duty_val;
+                document.getElementById('foreign-grand-total-bdt-value').textContent = final_grand_total_bdt.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                grandTotalBdtWrapper.classList.remove('hidden');
+            } else {
+                grandTotalBdtWrapper.classList.add('hidden');
+            }
+        }
         // END OF CORRECTED SECTION
 
         renderFinancialSummaryUI();
@@ -1154,12 +1163,12 @@ const getDefaultFinancialLabels = () => ({
             ait_is_percentage: true,
             vat_percentage: 7.5,
             ait_percentage: 5,
-            use_grand_total_bdt: false,
-            use_customs_duty: false,
             // START OF CORRECTED SECTION
-            grandtotal_foreign_bdt: 0,
+            use_total_in_bdt: false,
+            use_customs_duty: false,
+            total_in_bdt: 0,
             customs_duty_bdt: 0,
-            grand_total_bdt_is_auto: true,
+            total_in_bdt_is_auto: true,
             customs_duty_is_auto: true
             // END OF CORRECTED SECTION
         };
@@ -1766,8 +1775,8 @@ const getDefaultFinancialLabels = () => ({
             if (type === 'ait_local_bdt') {
                 financials.ait_is_percentage = false;
             }
-            if (type === 'grandtotal_foreign_bdt') {
-                financials.grand_total_bdt_is_auto = false;
+            if (type === 'total_in_bdt') {
+                financials.total_in_bdt_is_auto = false;
             }
             if (type === 'customs_duty_bdt') {
                 financials.customs_duty_is_auto = false;
@@ -1794,7 +1803,7 @@ const getDefaultFinancialLabels = () => ({
             { useKey: 'use_ait', type: 'ait' },
             { useKey: 'use_discount_local', type: 'discount_local' },
             { useKey: 'use_discount_installation', type: 'discount_installation' },
-            { useKey: 'use_grand_total_bdt', type: 'grand_total_bdt' },
+            { useKey: 'use_total_in_bdt', type: 'total_in_bdt' },
             { useKey: 'use_customs_duty', type: 'customs_duty' }
         ];
 
@@ -1827,7 +1836,7 @@ const getDefaultFinancialLabels = () => ({
             if (type === 'vat') financials.vat_is_percentage = true;
             if (type === 'ait') financials.ait_is_percentage = true;
             // START OF CORRECTION
-            if (type === 'grand_total_bdt') financials.grand_total_bdt_is_auto = true;
+            if (type === 'total_in_bdt') financials.total_in_bdt_is_auto = true;
             if (type === 'customs_duty') financials.customs_duty_is_auto = true;
             // END OF CORRECTION
             stateChanged = true;
@@ -1841,7 +1850,7 @@ const getDefaultFinancialLabels = () => ({
                 input.value = 0;
             }
             // START OF CORRECTION
-            if (type === 'grand_total_bdt') financials.grand_total_bdt_is_auto = true;
+            if (type === 'total_in_bdt') financials.total_in_bdt_is_auto = true;
             if (type === 'customs_duty') financials.customs_duty_is_auto = true;
             // END OF CORRECTION
             stateChanged = true;
@@ -2349,7 +2358,7 @@ const getDefaultFinancialLabels = () => ({
             ait_is_percentage: true,
             vat_percentage: 7.5,
             ait_percentage: 5,
-            use_grand_total_bdt: false,
+            use_total_in_bdt: false,
             use_customs_duty: false
         };
         financials = { ...defaultFinancials, ...(projectData.financials || {}) };
