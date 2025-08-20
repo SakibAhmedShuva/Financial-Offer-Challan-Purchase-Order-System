@@ -298,6 +298,8 @@ def update_excel_price(filepath, sheet_name, item_code, price_data):
         return (False, f"Error updating Excel file: {e}")
 
 # --- Export Functions ---
+# --- START OF CORRECTION ---
+# This entire function is replaced with the corrected logic.
 def export_file(file_type, data):
     user_info = data.get('user', {})
     filename_with_ext = data.get('filename', f"FinancialOffer_NoRef.{file_type}")
@@ -326,17 +328,41 @@ def export_file(file_type, data):
     data['has_foreign_part'] = has_foreign_part
     data['has_local_part'] = has_local_supply_part or has_install_part
 
-    sub_total_usd = sum(safe_float(scope.get('total_usd')) for scope in summary_scopes.values())
-    sub_total_bdt = sum(safe_float(scope.get('total_bdt')) for scope in summary_scopes.values())
+    # Calculate USD Total
+    sub_total_usd = sum(safe_float(item.get('foreign_total_usd', 0)) for item in items)
+    freight_usd = safe_float(financials.get('freight_foreign_usd', 0)) if financials.get('use_freight') else 0
+    discount_usd = safe_float(financials.get('discount_foreign_usd', 0)) if financials.get('use_discount_foreign') else 0
+    grand_total_usd = sub_total_usd + freight_usd - discount_usd
+    data['grand_total_usd'] = grand_total_usd # Explicitly add to data to fix Excel "Zero Only" bug
 
-    discount_bdt_total = safe_float(financials.get('discount_local_bdt')) + safe_float(financials.get('discount_installation_bdt'))
+    # Calculate BDT Total from Local/Installation parts
+    sub_total_local_bdt = sum(safe_float(item.get('local_supply_total_bdt', 0)) for item in items)
+    sub_total_install_bdt = sum(safe_float(item.get('installation_total_bdt', 0)) for item in items)
+    delivery_bdt = safe_float(financials.get('delivery_local_bdt', 0)) if financials.get('use_delivery') else 0
+    vat_bdt = safe_float(financials.get('vat_local_bdt', 0)) if financials.get('use_vat') else 0
+    ait_bdt = safe_float(financials.get('ait_local_bdt', 0)) if financials.get('use_ait') else 0
+    discount_local_bdt = safe_float(financials.get('discount_local_bdt', 0)) if financials.get('use_discount_local') else 0
+    discount_install_bdt = safe_float(financials.get('discount_installation_bdt', 0)) if financials.get('use_discount_installation') else 0
+    
+    local_parts_total_bdt = (sub_total_local_bdt + sub_total_install_bdt + delivery_bdt + vat_bdt + ait_bdt) - (discount_local_bdt + discount_install_bdt)
+    data['grand_total_bdt'] = local_parts_total_bdt # Store the local-only part total
 
-    grand_total_usd = sub_total_usd + safe_float(financials.get('freight_foreign_usd')) - safe_float(financials.get('discount_foreign_usd'))
-    grand_total_bdt = sub_total_bdt + safe_float(financials.get('delivery_local_bdt')) - discount_bdt_total
+    # Calculate Final BDT Total including converted foreign part
+    total_in_bdt_from_foreign = safe_float(financials.get('total_in_bdt', 0)) if financials.get('use_total_in_bdt') else 0
+    customs_duty_bdt = safe_float(financials.get('customs_duty_bdt', 0)) if financials.get('use_customs_duty') else 0
+    
+    final_grand_total_bdt = local_parts_total_bdt + total_in_bdt_from_foreign + customs_duty_bdt
+    data['final_grand_total_bdt'] = final_grand_total_bdt
 
+    # Update "In Words" logic
     data['words_usd'] = to_words_usd(grand_total_usd) if data['has_foreign_part'] else ""
-    data['words_bdt'] = to_words_bdt(grand_total_bdt) if data['has_local_part'] else ""
-
+    
+    # Check which BDT total to convert to words
+    if total_in_bdt_from_foreign > 0 or customs_duty_bdt > 0:
+        data['words_bdt'] = to_words_bdt(final_grand_total_bdt)
+        data['has_local_part'] = True # Ensure "In Words (Local Part)" is shown
+    else:
+        data['words_bdt'] = to_words_bdt(local_parts_total_bdt) if data['has_local_part'] else ""
 
     if file_type == 'pdf':
         pdf_bytes = pdf_gen.generate_financial_offer_pdf(data, CONFIG['AUTH_DIR'], CONFIG['HEADER_COLOR_HEX'])
@@ -385,6 +411,7 @@ def export_file(file_type, data):
     log_activity(user_info.get('name', 'Unknown'), log_name, filename_with_ext, project_id)
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=filename_with_ext, mimetype=mimetype)
+# --- END OF CORRECTION ---
 
 
 def generate_po_file(file_type, po_data):
