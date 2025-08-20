@@ -73,7 +73,6 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
     in_table, table_data = False, []
     tnc_headers = ["Foreign Part:", "Local Part (Supply):", "Local Part (Installation):"]
     
-    # --- CORRECTED LOGIC ---
     headers_needing_space_before = [
         "Local Part (Supply):",
         "Local Part (Installation):",
@@ -84,7 +83,6 @@ def add_tnc_to_excel(wb, tnc_text, header_color_hex, auth_dir, data):
         "Payment Schedule (Local Supply):",
         "Payment Schedule (Installation):"
     ]
-    # --- END CORRECTION ---
 
     for line in tnc_text.split('\n'):
         line = line.strip()
@@ -566,19 +564,15 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             if freight > 0 and is_foreign_visible:
                 summary_data_to_write.append({'label': financial_labels.get('freight', 'Sea Freight:'), 'usd': freight, 'bdt': None})
             
-            # START OF CORRECTION
-            # Add Total in BDT and Customs Duty to the summary if they are used
+            # --- START OF CORRECTION ---
             if financials.get('use_total_in_bdt'):
                 total_in_bdt = safe_float(financials.get('total_in_bdt', 0))
-                # Add it to the BDT column if local part is not visible, otherwise it might look confusing.
-                if not is_local_part_visible:
-                     summary_data_to_write.append({'label': financial_labels.get('totalInBdt', 'Total in BDT:'), 'usd': None, 'bdt': total_in_bdt})
+                summary_data_to_write.append({'label': financial_labels.get('totalInBdt', 'Total in BDT:'), 'usd': None, 'bdt': total_in_bdt})
 
             if financials.get('use_customs_duty'):
                 customs_duty = safe_float(financials.get('customs_duty_bdt', 0))
-                if not is_local_part_visible:
-                    summary_data_to_write.append({'label': financial_labels.get('customsDuty', 'Customs Duty:'), 'usd': None, 'bdt': customs_duty})
-            # END OF CORRECTION
+                summary_data_to_write.append({'label': financial_labels.get('customsDuty', 'Customs Duty:'), 'usd': None, 'bdt': customs_duty})
+            # --- END OF CORRECTION ---
 
             if is_local_part_visible:
                 if delivery > 0:
@@ -638,7 +632,9 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         current_row_idx += 2
 
         if data.get('has_foreign_part'):
-            in_words_text_usd = f"In Words (Foreign Part):   {to_words_usd(data.get('grand_total_usd', 0))}"
+            # --- START OF CORRECTION ---
+            in_words_text_usd = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
+            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_usd)
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
             cell.font = bold_font
@@ -648,7 +644,9 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            in_words_text_bdt = f"In Words (Local Part):   {to_words_bdt(data.get('grand_total_bdt', 0))}"
+            # --- START OF CORRECTION ---
+            in_words_text_bdt = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
+            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_bdt)
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
             cell.font = bold_font
@@ -714,7 +712,9 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         max_col_for_merge = ws.max_column
 
         if data.get('has_foreign_part'):
-            in_words_text = f"In Words (Foreign Part):   {to_words_usd(data.get('grand_total_usd', 0))}"
+            # --- START OF CORRECTION ---
+            in_words_text = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
+            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
@@ -723,7 +723,9 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            in_words_text = f"In Words (Local Part):   {to_words_bdt(data.get('grand_total_bdt', 0))}"
+            # --- START OF CORRECTION ---
+            in_words_text = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
+            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
@@ -754,7 +756,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         wb.active = wb['Financial Offer']
         
     return wb
-
 
 def generate_purchase_order_xlsx(po_data, auth_dir, header_color_hex="D6EAF8"):
     items = po_data.get('items', [])
