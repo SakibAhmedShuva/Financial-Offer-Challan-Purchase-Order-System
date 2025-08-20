@@ -206,7 +206,9 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
         first_val_col_idx = min(v for v in value_cols.values() if v is not None)
     label_col_end_idx = first_val_col_idx - 1
 
-    def add_financial_row(label, values_dict, is_bold=False, is_red=False, is_grand_total=False):
+    def add_financial_row(label, values_dict, is_bold=False, is_red=False, is_grand_total=False, number_format_overrides=None):
+        if number_format_overrides is None:
+            number_format_overrides = {}
         nonlocal current_row
         ws.append([])
         current_row += 1
@@ -227,10 +229,13 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             value_cell = ws.cell(row=current_row, column=col_idx, value=value)
             summary_cell_coords[(label, key)] = value_cell.coordinate 
             
-            price_header_cell = ws.cell(row=header_row_2_num, column=col_idx-1)
-            
-            if 'USD' in price_header_cell.value: value_cell.number_format = '"$"#,##0.00'
-            elif 'BDT' in price_header_cell.value: value_cell.number_format = '"BDT "#,##0.00'
+            override_format = number_format_overrides.get(key)
+            if override_format:
+                value_cell.number_format = override_format
+            else:
+                price_header_cell = ws.cell(row=header_row_2_num, column=col_idx-1)
+                if 'USD' in price_header_cell.value: value_cell.number_format = '"$"#,##0.00'
+                elif 'BDT' in price_header_cell.value: value_cell.number_format = '"BDT "#,##0.00'
             
             if is_bold or is_grand_total:
                 value_cell.font = grand_total_font if is_grand_total else bold_font
@@ -256,24 +261,14 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
         if freight > 0 and is_foreign_visible_boq:
             add_financial_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
         
-        # --- FIX START: Add logic for 'Total in BDT' and 'Customs Duty' ---
-        target_bdt_col_key = 'local_supply_price' if is_local_supply_visible_boq else 'installation_price' if is_install_visible_boq else None
+        target_bdt_col_key_primary = 'local_supply_price' if is_local_supply_visible_boq else 'installation_price' if is_install_visible_boq else None
         
-        if financials.get('use_total_in_bdt') and target_bdt_col_key:
-            total_in_bdt = safe_float(financials.get('total_in_bdt', 0))
-            add_financial_row(financial_labels.get('totalInBdt', 'Total in BDT:'), {target_bdt_col_key: total_in_bdt})
-
-        if financials.get('use_customs_duty') and target_bdt_col_key:
-            customs_duty = safe_float(financials.get('customs_duty_bdt', 0))
-            add_financial_row(financial_labels.get('customsDuty', 'Customs Duty:'), {target_bdt_col_key: customs_duty})
-        # --- FIX END ---
-            
-        if delivery > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
-            add_financial_row(financial_labels.get('delivery', 'Delivery:'), {'local_supply_price' if is_local_supply_visible_boq else 'installation_price': delivery})
-        if vat > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
-            add_financial_row(financial_labels.get('vat', 'VAT:'), {'local_supply_price' if is_local_supply_visible_boq else 'installation_price': vat})
-        if ait > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
-            add_financial_row(financial_labels.get('ait', 'AIT:'), {'local_supply_price' if is_local_supply_visible_boq else 'installation_price': ait})
+        if delivery > 0 and target_bdt_col_key_primary:
+            add_financial_row(financial_labels.get('delivery', 'Delivery:'), {target_bdt_col_key_primary: delivery})
+        if vat > 0 and target_bdt_col_key_primary:
+            add_financial_row(financial_labels.get('vat', 'VAT:'), {target_bdt_col_key_primary: vat})
+        if ait > 0 and target_bdt_col_key_primary:
+            add_financial_row(financial_labels.get('ait', 'AIT:'), {target_bdt_col_key_primary: ait})
             
         if any(d > 0 for d in [discount_foreign, discount_local, discount_install]):
             discount_values = {
@@ -305,18 +300,10 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             vat_coord = summary_cell_coords.get((financial_labels.get('vat', 'VAT:'), key))
             ait_coord = summary_cell_coords.get((financial_labels.get('ait', 'AIT:'), key))
             discount_coord = summary_cell_coords.get(("Discount:", key))
-            # --- FIX START: Add new fields to the formula calculation ---
-            total_in_bdt_coord = summary_cell_coords.get((financial_labels.get('totalInBdt', 'Total in BDT:'), key))
-            customs_duty_coord = summary_cell_coords.get((financial_labels.get('customsDuty', 'Customs Duty:'), key))
-            # --- FIX END ---
             if delivery_coord: formula_parts.append(f"+{delivery_coord}")
             if vat_coord: formula_parts.append(f"+{vat_coord}")
             if ait_coord: formula_parts.append(f"+{ait_coord}")
             if discount_coord: formula_parts.append(f"+{discount_coord}")
-            # --- FIX START: Add new fields to the formula calculation ---
-            if total_in_bdt_coord: formula_parts.append(f"+{total_in_bdt_coord}")
-            if customs_duty_coord: formula_parts.append(f"+{customs_duty_coord}")
-            # --- FIX END ---
         
         if key == 'installation_price':
             discount_coord = summary_cell_coords.get(("Discount:", key))
@@ -325,17 +312,9 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 delivery_coord = summary_cell_coords.get((financial_labels.get('delivery', 'Delivery:'), key))
                 vat_coord = summary_cell_coords.get((financial_labels.get('vat', 'VAT:'), key))
                 ait_coord = summary_cell_coords.get((financial_labels.get('ait', 'AIT:'), key))
-                # --- FIX START: Add new fields to the formula calculation (for installation column) ---
-                total_in_bdt_coord = summary_cell_coords.get((financial_labels.get('totalInBdt', 'Total in BDT:'), key))
-                customs_duty_coord = summary_cell_coords.get((financial_labels.get('customsDuty', 'Customs Duty:'), key))
-                # --- FIX END ---
                 if delivery_coord: formula_parts.append(f"+{delivery_coord}")
                 if vat_coord: formula_parts.append(f"+{vat_coord}")
                 if ait_coord: formula_parts.append(f"+{ait_coord}")
-                # --- FIX START: Add new fields to the formula calculation (for installation column) ---
-                if total_in_bdt_coord: formula_parts.append(f"+{total_in_bdt_coord}")
-                if customs_duty_coord: formula_parts.append(f"+{customs_duty_coord}")
-                # --- FIX END ---
             if discount_coord: formula_parts.append(f"+{discount_coord}")
         
         if has_additional_charges:
@@ -347,6 +326,42 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
         add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
     else:
         add_financial_row(grand_total_label, subtotals, is_grand_total=True)
+    
+    is_foreign_visible_boq = 'foreign' in [s['key'] for s in visible_price_sections]
+    if is_foreign_visible_boq and has_additional_charges:
+        bdt_in_foreign_col_formula_parts = []
+        bdt_format = '"BDT "#,##0.00'
+
+        if financials.get('use_total_in_bdt'):
+            total_in_bdt = safe_float(financials.get('total_in_bdt', 0))
+            add_financial_row(
+                label=financial_labels.get('totalInBdt', 'Total in BDT:'), 
+                values_dict={'foreign': total_in_bdt},
+                number_format_overrides={'foreign': bdt_format}
+            )
+            coord = summary_cell_coords.get((financial_labels.get('totalInBdt', 'Total in BDT:'), 'foreign'))
+            if coord:
+                bdt_in_foreign_col_formula_parts.append(coord)
+
+        if financials.get('use_customs_duty'):
+            customs_duty = safe_float(financials.get('customs_duty_bdt', 0))
+            add_financial_row(
+                label=financial_labels.get('customsDuty', 'Customs Duty:'), 
+                values_dict={'foreign': customs_duty},
+                number_format_overrides={'foreign': bdt_format}
+            )
+            coord = summary_cell_coords.get((financial_labels.get('customsDuty', 'Customs Duty:'), 'foreign'))
+            if coord:
+                bdt_in_foreign_col_formula_parts.append(coord)
+        
+        if bdt_in_foreign_col_formula_parts:
+            bdt_grand_total_formula = f"={'+'.join(bdt_in_foreign_col_formula_parts)}"
+            add_financial_row(
+                label="Grand Total (BDT):", 
+                values_dict={'foreign': bdt_grand_total_formula},
+                is_grand_total=True,
+                number_format_overrides={'foreign': bdt_format}
+            )
 
 def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
     user_info, items = data.get('user', {}), data.get('items', [])
@@ -591,7 +606,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             if freight > 0 and is_foreign_visible:
                 summary_data_to_write.append({'label': financial_labels.get('freight', 'Sea Freight:'), 'usd': freight, 'bdt': None})
             
-            # --- START OF CORRECTION ---
             if financials.get('use_total_in_bdt'):
                 total_in_bdt = safe_float(financials.get('total_in_bdt', 0))
                 summary_data_to_write.append({'label': financial_labels.get('totalInBdt', 'Total in BDT:'), 'usd': None, 'bdt': total_in_bdt})
@@ -599,7 +613,6 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             if financials.get('use_customs_duty'):
                 customs_duty = safe_float(financials.get('customs_duty_bdt', 0))
                 summary_data_to_write.append({'label': financial_labels.get('customsDuty', 'Customs Duty:'), 'usd': None, 'bdt': customs_duty})
-            # --- END OF CORRECTION ---
 
             if is_local_part_visible:
                 if delivery > 0:
@@ -659,9 +672,7 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         current_row_idx += 2
 
         if data.get('has_foreign_part'):
-            # --- START OF CORRECTION ---
             in_words_text_usd = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
-            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_usd)
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
             cell.font = bold_font
@@ -671,9 +682,7 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            # --- START OF CORRECTION ---
             in_words_text_bdt = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
-            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text_bdt)
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=4)
             cell.font = bold_font
@@ -739,9 +748,7 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         max_col_for_merge = ws.max_column
 
         if data.get('has_foreign_part'):
-            # --- START OF CORRECTION ---
             in_words_text = f"In Words (Foreign Part):   {data.get('words_usd', 'N/A')}"
-            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
@@ -750,9 +757,7 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             current_row_idx += 1
 
         if data.get('has_local_part'):
-            # --- START OF CORRECTION ---
             in_words_text = f"In Words (Local Part):   {data.get('words_bdt', 'N/A')}"
-            # --- END OF CORRECTION ---
             cell = ws.cell(row=current_row_idx, column=1, value=in_words_text)
             cell.font = bold_font
             cell.fill = header_fill
