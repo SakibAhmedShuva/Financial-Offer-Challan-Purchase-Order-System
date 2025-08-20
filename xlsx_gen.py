@@ -256,6 +256,18 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
         if freight > 0 and is_foreign_visible_boq:
             add_financial_row(financial_labels.get('freight', 'Freight:'), {'foreign': freight})
         
+        # --- FIX START: Add logic for 'Total in BDT' and 'Customs Duty' ---
+        target_bdt_col_key = 'local_supply_price' if is_local_supply_visible_boq else 'installation_price' if is_install_visible_boq else None
+        
+        if financials.get('use_total_in_bdt') and target_bdt_col_key:
+            total_in_bdt = safe_float(financials.get('total_in_bdt', 0))
+            add_financial_row(financial_labels.get('totalInBdt', 'Total in BDT:'), {target_bdt_col_key: total_in_bdt})
+
+        if financials.get('use_customs_duty') and target_bdt_col_key:
+            customs_duty = safe_float(financials.get('customs_duty_bdt', 0))
+            add_financial_row(financial_labels.get('customsDuty', 'Customs Duty:'), {target_bdt_col_key: customs_duty})
+        # --- FIX END ---
+            
         if delivery > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
             add_financial_row(financial_labels.get('delivery', 'Delivery:'), {'local_supply_price' if is_local_supply_visible_boq else 'installation_price': delivery})
         if vat > 0 and (is_local_supply_visible_boq or is_install_visible_boq):
@@ -293,10 +305,18 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
             vat_coord = summary_cell_coords.get((financial_labels.get('vat', 'VAT:'), key))
             ait_coord = summary_cell_coords.get((financial_labels.get('ait', 'AIT:'), key))
             discount_coord = summary_cell_coords.get(("Discount:", key))
+            # --- FIX START: Add new fields to the formula calculation ---
+            total_in_bdt_coord = summary_cell_coords.get((financial_labels.get('totalInBdt', 'Total in BDT:'), key))
+            customs_duty_coord = summary_cell_coords.get((financial_labels.get('customsDuty', 'Customs Duty:'), key))
+            # --- FIX END ---
             if delivery_coord: formula_parts.append(f"+{delivery_coord}")
             if vat_coord: formula_parts.append(f"+{vat_coord}")
             if ait_coord: formula_parts.append(f"+{ait_coord}")
             if discount_coord: formula_parts.append(f"+{discount_coord}")
+            # --- FIX START: Add new fields to the formula calculation ---
+            if total_in_bdt_coord: formula_parts.append(f"+{total_in_bdt_coord}")
+            if customs_duty_coord: formula_parts.append(f"+{customs_duty_coord}")
+            # --- FIX END ---
         
         if key == 'installation_price':
             discount_coord = summary_cell_coords.get(("Discount:", key))
@@ -305,9 +325,17 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 delivery_coord = summary_cell_coords.get((financial_labels.get('delivery', 'Delivery:'), key))
                 vat_coord = summary_cell_coords.get((financial_labels.get('vat', 'VAT:'), key))
                 ait_coord = summary_cell_coords.get((financial_labels.get('ait', 'AIT:'), key))
+                # --- FIX START: Add new fields to the formula calculation (for installation column) ---
+                total_in_bdt_coord = summary_cell_coords.get((financial_labels.get('totalInBdt', 'Total in BDT:'), key))
+                customs_duty_coord = summary_cell_coords.get((financial_labels.get('customsDuty', 'Customs Duty:'), key))
+                # --- FIX END ---
                 if delivery_coord: formula_parts.append(f"+{delivery_coord}")
                 if vat_coord: formula_parts.append(f"+{vat_coord}")
                 if ait_coord: formula_parts.append(f"+{ait_coord}")
+                # --- FIX START: Add new fields to the formula calculation (for installation column) ---
+                if total_in_bdt_coord: formula_parts.append(f"+{total_in_bdt_coord}")
+                if customs_duty_coord: formula_parts.append(f"+{customs_duty_coord}")
+                # --- FIX END ---
             if discount_coord: formula_parts.append(f"+{discount_coord}")
         
         if has_additional_charges:
@@ -319,7 +347,6 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
         add_financial_row(grand_total_label, grand_totals, is_grand_total=True)
     else:
         add_financial_row(grand_total_label, subtotals, is_grand_total=True)
-
 
 def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
     user_info, items = data.get('user', {}), data.get('items', [])
