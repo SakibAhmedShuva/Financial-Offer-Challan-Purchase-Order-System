@@ -314,12 +314,24 @@ def export_file(file_type, data):
     visible_columns = data.get('visibleColumns', {})
     summary_scopes = data.get('summaryScopes', {})
 
-    has_freight = safe_float(financials.get('freight_foreign_usd')) > 0
-    has_delivery = safe_float(financials.get('delivery_local_bdt')) > 0
-    has_discount = (safe_float(financials.get('discount_foreign_usd')) > 0 or
-                    safe_float(financials.get('discount_local_bdt')) > 0 or
-                    safe_float(financials.get('discount_installation_bdt')) > 0)
-    data['has_additional_charges'] = has_freight or has_delivery or has_discount
+    # --- FIX START: Correctly and robustly define has_additional_charges ---
+    has_freight = financials.get('use_freight') and safe_float(financials.get('freight_foreign_usd')) > 0
+    has_delivery = financials.get('use_delivery') and safe_float(financials.get('delivery_local_bdt')) > 0
+    has_vat = financials.get('use_vat') and safe_float(financials.get('vat_local_bdt')) > 0
+    has_ait = financials.get('use_ait') and safe_float(financials.get('ait_local_bdt')) > 0
+    has_discount = (
+        (financials.get('use_discount_foreign') and safe_float(financials.get('discount_foreign_usd')) > 0) or
+        (financials.get('use_discount_local') and safe_float(financials.get('discount_local_bdt')) > 0) or
+        (financials.get('use_discount_installation') and safe_float(financials.get('discount_installation_bdt')) > 0)
+    )
+    has_total_in_bdt = financials.get('use_total_in_bdt') and safe_float(financials.get('total_in_bdt', 0)) > 0
+    has_customs_duty = financials.get('use_customs_duty') and safe_float(financials.get('customs_duty_bdt', 0)) > 0
+    
+    data['has_additional_charges'] = (
+        has_freight or has_delivery or has_vat or has_ait or has_discount or 
+        has_total_in_bdt or has_customs_duty
+    )
+    # --- FIX END ---
 
     has_foreign_part = visible_columns.get('foreign_price', True) and any(safe_float(item.get('foreign_total_usd')) > 0 for item in items)
     has_local_supply_part = visible_columns.get('local_supply_price') and any(safe_float(item.get('local_supply_total_bdt')) > 0 for item in items)
@@ -333,7 +345,7 @@ def export_file(file_type, data):
     freight_usd = safe_float(financials.get('freight_foreign_usd', 0)) if financials.get('use_freight') else 0
     discount_usd = safe_float(financials.get('discount_foreign_usd', 0)) if financials.get('use_discount_foreign') else 0
     grand_total_usd = sub_total_usd + freight_usd - discount_usd
-    data['grand_total_usd'] = grand_total_usd # Explicitly add to data to fix Excel "Zero Only" bug
+    data['grand_total_usd'] = grand_total_usd
 
     # Calculate BDT Total from Local/Installation parts
     sub_total_local_bdt = sum(safe_float(item.get('local_supply_total_bdt', 0)) for item in items)
@@ -345,23 +357,23 @@ def export_file(file_type, data):
     discount_install_bdt = safe_float(financials.get('discount_installation_bdt', 0)) if financials.get('use_discount_installation') else 0
     
     local_parts_total_bdt = (sub_total_local_bdt + sub_total_install_bdt + delivery_bdt + vat_bdt + ait_bdt) - (discount_local_bdt + discount_install_bdt)
-    data['grand_total_bdt'] = local_parts_total_bdt # Store the local-only part total
+    data['grand_total_bdt'] = local_parts_total_bdt
 
-    # Calculate Final BDT Total including converted foreign part
+    # Calculate BDT values from Foreign part conversion
     total_in_bdt_from_foreign = safe_float(financials.get('total_in_bdt', 0)) if financials.get('use_total_in_bdt') else 0
     customs_duty_bdt = safe_float(financials.get('customs_duty_bdt', 0)) if financials.get('use_customs_duty') else 0
     
+    # Calculate Final Grand Total BDT
     final_grand_total_bdt = local_parts_total_bdt + total_in_bdt_from_foreign + customs_duty_bdt
     data['final_grand_total_bdt'] = final_grand_total_bdt
 
-    # Update "In Words" logic
-    data['words_usd'] = to_words_usd(grand_total_usd) if data['has_foreign_part'] else ""
-    
-    # Check which BDT total to convert to words
+    # Correctly handle "In Words" logic
     if total_in_bdt_from_foreign > 0 or customs_duty_bdt > 0:
-        data['words_bdt'] = to_words_bdt(final_grand_total_bdt)
-        data['has_local_part'] = True # Ensure "In Words (Local Part)" is shown
+        foreign_part_bdt_total = total_in_bdt_from_foreign + customs_duty_bdt
+        data['words_usd'] = to_words_bdt(foreign_part_bdt_total)
+        data['words_bdt'] = to_words_bdt(local_parts_total_bdt) if data['has_local_part'] else ""
     else:
+        data['words_usd'] = to_words_usd(grand_total_usd) if data['has_foreign_part'] else ""
         data['words_bdt'] = to_words_bdt(local_parts_total_bdt) if data['has_local_part'] else ""
 
     if file_type == 'pdf':
