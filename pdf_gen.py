@@ -449,10 +449,17 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     items = data.get('items', [])
     financials = data.get('financials', {})
 
-    subtotal_foreign = sum(safe_float(it.get('foreign_total_usd', 0)) for it in items)
-    subtotal_local_supply = sum(safe_float(it.get('local_supply_total_bdt', 0)) for it in items)
-    subtotal_installation = sum(safe_float(it.get('installation_total_bdt', 0)) for it in items)
+    # --- START OF CORRECTION ---
+    # Correctly use the pre-calculated totals and "in words" text from app.py
+    grand_total_usd = data.get('grand_total_usd', 0)
+    grand_total_bdt = data.get('final_grand_total_bdt', data.get('grand_total_bdt', 0)) # Use final BDT total
+    words_usd_text = data.get('words_usd', 'N/A')
+    words_bdt_text = data.get('words_bdt', 'N/A')
 
+    # Extract intermediate values for display
+    sub_total_usd = sum(scope.get('total_usd', 0) for scope in data.get('summaryScopes', {}).values())
+    sub_total_bdt = sum(scope.get('total_bdt', 0) for scope in data.get('summaryScopes', {}).values())
+    
     freight = safe_float(financials.get('freight_foreign_usd')) if financials.get('use_freight') else 0
     delivery = safe_float(financials.get('delivery_local_bdt')) if financials.get('use_delivery') else 0
     vat = safe_float(financials.get('vat_local_bdt')) if financials.get('use_vat') else 0
@@ -461,22 +468,10 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     discount_local = safe_float(financials.get('discount_local_bdt')) if financials.get('use_discount_local') else 0
     discount_install = safe_float(financials.get('discount_installation_bdt')) if financials.get('use_discount_installation') else 0
 
-    grand_total_usd = subtotal_foreign + freight - discount_foreign
-    grand_total_bdt = subtotal_local_supply + subtotal_installation + delivery + vat + ait - discount_local - discount_install
-    
-    # START OF CORRECTION
-    # Use the final, potentially user-overridden BDT and Duty values from the frontend
-    if financials.get('use_total_in_bdt'):
-        total_in_bdt = safe_float(financials.get('total_in_bdt', 0))
-        data['total_in_bdt'] = total_in_bdt
-    
-    if financials.get('use_customs_duty'):
-        customs_duty_bdt = safe_float(financials.get('customs_duty_bdt', 0))
-        data['customs_duty_bdt'] = customs_duty_bdt
-    # END OF CORRECTION
-
-    data['words_usd'] = to_words_usd(grand_total_usd)
-    data['words_bdt'] = to_words_bdt(grand_total_bdt)
+    # These are the specific values to display as line items
+    total_in_bdt = safe_float(financials.get('total_in_bdt', 0)) if financials.get('use_total_in_bdt') else 0
+    customs_duty_bdt = safe_float(financials.get('customs_duty_bdt', 0)) if financials.get('use_customs_duty') else 0
+    # --- END OF CORRECTION ---
     
     financial_labels = data.get('financialLabels', {})
     user_info = data.get('user', {})
@@ -595,9 +590,6 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         
         pdf.set_y(final_y)
         pdf.set_font('Arial', '', 10)
-
-        sub_total_usd = sum(scope['total_usd'] for scope in summary_scopes.values())
-        sub_total_bdt = sum(scope['total_bdt'] for scope in summary_scopes.values())
         
         # --- SORTING FIX START ---
         scope_order = ['foreign', 'localsupply', 'installation']
@@ -652,6 +644,14 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
             add_summary_row(financial_labels.get('subtotalForeign', 'Sub-Total:'), sub_total_usd, sub_total_bdt, is_bold=True)
             if freight > 0 and is_foreign_visible:
                 add_summary_row(financial_labels.get('freight', 'Sea Freight:'), freight, None)
+            
+            # --- START OF CORRECTION ---
+            if total_in_bdt > 0:
+                add_summary_row(financial_labels.get('totalInBdt', 'Total in BDT:'), None, total_in_bdt)
+            if customs_duty_bdt > 0:
+                add_summary_row(financial_labels.get('customsDuty', 'Customs Duty:'), None, customs_duty_bdt)
+            # --- END OF CORRECTION ---
+                
             if is_local_part_visible:
                 if delivery > 0:
                     add_summary_row(financial_labels.get('delivery', 'Delivery Charge:'), None, delivery)
@@ -671,11 +671,11 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
             pdf.set_fill_color(238, 229, 118)
 
             if data.get('has_foreign_part'):
-                in_words_text_usd = f"In Words (Foreign Part):   {sanitize_text(data.get('words_usd', 'N/A'))}"
+                in_words_text_usd = f"In Words (Foreign Part):   {sanitize_text(words_usd_text)}"
                 pdf.cell(0, 8, in_words_text_usd, 1, 1, 'C', fill=True)
             
             if data.get('has_local_part'):
-                in_words_text_bdt = f"In Words (Local Part):   {sanitize_text(data.get('words_bdt', 'N/A'))}"
+                in_words_text_bdt = f"In Words (Local Part):   {sanitize_text(words_bdt_text)}"
                 pdf.cell(0, 8, in_words_text_bdt, 1, 1, 'C', fill=True)
         # --- "IN WORDS" FIX END ---
         
@@ -712,24 +712,20 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         pdf.set_font('Arial', '', 11)
         pdf.cell(0, 7, sanitized_reference, 0, 1, 'L')
         
-        # --- START REPLACEMENT ---
-        label_width = 20  # A fixed width for labels like "Client:", "Address:"
+        label_width = 20
         available_width = pdf.w - pdf.l_margin - pdf.r_margin
         value_width = available_width - label_width
 
-        # Client line
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(label_width, 7, "Client:", 0, 0, 'L')
         pdf.set_font('Arial', '', 11)
         pdf.multi_cell(value_width, 7, sanitized_client_name, 0, 'L', ln=1)
 
-        # Address line
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(label_width, 7, "Address:", 0, 0, 'L')
         pdf.set_font('Arial', '', 11)
         pdf.multi_cell(value_width, 7, sanitized_client_address, 0, 'L', ln=1)
         pdf.ln(10)
-        # --- END REPLACEMENT ---
         
         draw_boq_content(pdf, data, sections, visible_price_groups)
         draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only)
@@ -741,11 +737,11 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
             pdf.set_fill_color(238, 229, 118)
 
         if data.get('has_foreign_part'):
-            in_words_text_usd = f"In Words (Foreign Part):   {sanitize_text(data.get('words_usd', 'N/A'))}"
+            in_words_text_usd = f"In Words (Foreign Part):   {sanitize_text(words_usd_text)}"
             pdf.cell(0, 8, in_words_text_usd, 1, 1, 'C', fill=True)
         
         if data.get('has_local_part'):
-            in_words_text_bdt = f"In Words (Local Part):   {sanitize_text(data.get('words_bdt', 'N/A'))}"
+            in_words_text_bdt = f"In Words (Local Part):   {sanitize_text(words_bdt_text)}"
             pdf.cell(0, 8, in_words_text_bdt, 1, 1, 'C', fill=True)
         # --- "IN WORDS" FIX END ---
         
