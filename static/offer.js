@@ -1063,14 +1063,14 @@ const getDefaultFinancialLabels = () => ({
 
         if (financials.use_vat && financials.vat_is_percentage) {
             financials.vat_local_bdt = (subtotal_local * (financials.vat_percentage / 100)).toFixed(2);
-            const vatInput = document.querySelector('[data-type="vat_local_bdt"]');
+            const vatInput = document.querySelector('input[data-type="vat_local_bdt"]');
             if (vatInput) vatInput.value = financials.vat_local_bdt;
         }
         const vat = financials.use_vat ? parseFloat(financials.vat_local_bdt || 0) : 0;
 
         if (financials.use_ait && financials.ait_is_percentage) {
             financials.ait_local_bdt = (subtotal_local * (financials.ait_percentage / 100)).toFixed(2);
-            const aitInput = document.querySelector('[data-type="ait_local_bdt"]');
+            const aitInput = document.querySelector('input[data-type="ait_local_bdt"]');
             if (aitInput) aitInput.value = financials.ait_local_bdt;
         }
         const ait = financials.use_ait ? parseFloat(financials.ait_local_bdt || 0) : 0;
@@ -1103,16 +1103,19 @@ const getDefaultFinancialLabels = () => ({
         const total_in_bdt_val = financials.use_total_in_bdt ? parseFloat(financials.total_in_bdt || 0) : 0;
     
         if (financials.use_customs_duty && financials.customs_duty_is_auto && total_in_bdt_val > 0) {
-            // Round up to the nearest 100
-            financials.customs_duty_bdt = Math.ceil((total_in_bdt_val * offerConfig.customs_duty_percentage) / 100) * 100;
+            // CHANGED LINE: The percentage value is now correctly divided by 100.
+            const raw_duty = total_in_bdt_val * (offerConfig.customs_duty_percentage / 100);
+            // The rounding logic (round up to the nearest 100) is now applied correctly.
+            financials.customs_duty_bdt = Math.ceil(raw_duty / 100) * 100;
         }
         
         const customs_duty_val = financials.use_customs_duty ? parseFloat(financials.customs_duty_bdt || 0) : 0;
     
-        const totalInBdtInput = document.querySelector('[data-type="total_in_bdt"]');
+        const totalInBdtInput = document.querySelector('input[data-type="total_in_bdt"]');
         if (totalInBdtInput) totalInBdtInput.value = total_in_bdt_val.toFixed(2);
     
-        const customsDutyInput = document.querySelector('[data-type="customs_duty_bdt"]');
+        // CORRECTED SELECTOR: Target the input specifically
+        const customsDutyInput = document.querySelector('input[data-type="customs_duty_bdt"]');
         if (customsDutyInput) customsDutyInput.value = customs_duty_val.toFixed(2);
 
         const grandTotalBdtWrapper = document.getElementById('foreign-grand-total-bdt-wrapper');
