@@ -466,9 +466,9 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     
     # START OF CORRECTION
     # Use the final, potentially user-overridden BDT and Duty values from the frontend
-    if financials.get('use_grand_total_bdt'):
-        grand_total_foreign_bdt = safe_float(financials.get('grandtotal_foreign_bdt', 0))
-        data['grand_total_foreign_bdt'] = grand_total_foreign_bdt
+    if financials.get('use_total_in_bdt'):
+        total_in_bdt = safe_float(financials.get('total_in_bdt', 0))
+        data['total_in_bdt'] = total_in_bdt
     
     if financials.get('use_customs_duty'):
         customs_duty_bdt = safe_float(financials.get('customs_duty_bdt', 0))
