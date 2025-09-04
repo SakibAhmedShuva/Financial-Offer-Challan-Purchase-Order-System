@@ -1,0 +1,123 @@
+<div class="space-y-6">
+    <div class="bg-white dark:bg-slate-800 shadow-lg rounded-xl p-6">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Challan Generator</h2>
+                <p id="challan-user-name" class="text-slate-500 dark:text-slate-400 mt-1">Prepared by: Sakib Ahmed</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <button id="new-challan-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fas fa-plus"></i> New</button>
+                <div class="flex items-center gap-2 bg-sky-100 dark:bg-sky-900/50 rounded-lg px-4 py-2">
+                    <span class="font-semibold text-sky-800 dark:text-sky-300">Challan No:</span>
+                    <div id="challan-ref-display" contenteditable="true" class="font-mono text-sm font-semibold text-sky-800 dark:text-sky-300 focus:outline-none">
+                        Loading...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 shadow-lg rounded-xl">
+        <div class="p-6 space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-x-8">
+                <div class="lg:col-span-1">
+                     <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-user-check mr-3 text-sky-500"></i>1. Select Client</h3>
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+                        <input type="text" id="challan-client-search-input" placeholder="Search for a client..." class="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <div id="challan-client-search-results" class="search-results-dropdown hidden"></div>
+                    </div>
+                    <div id="challan-selected-client-info" class="mt-4 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg hidden" title="You can edit the client name and address directly.">
+                        <p id="challan-client-name" contenteditable="true" class="font-bold text-green-800 dark:text-green-200"></p>
+                        <p id="challan-client-address" contenteditable="true" class="text-sm text-slate-600 dark:text-slate-400"></p>
+                    </div>
+                     <div class="mt-4 flex items-center">
+                        <input id="challan-include-signature" type="checkbox" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500" checked>
+                        <label for="challan-include-signature" class="ml-2 block text-sm text-slate-900 dark:text-slate-300 font-medium">Include Authorized Signature on Export</label>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-semibold text-lg text-slate-800 dark:text-white flex items-center"><i class="fas fa-plus-circle mr-3 text-sky-500"></i>2. Add Items</h3>
+                        <div class="flex items-center space-x-4">
+                            <h4 class="font-medium text-sm text-slate-700 dark:text-slate-300">Search In:</h4>
+                            <div class="flex items-center">
+                                <input id="challan-search-foreign" type="checkbox" value="foreign" name="challan_item_source" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500">
+                                <label for="challan-search-foreign" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Foreign</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="challan-search-local" type="checkbox" value="local" name="challan_item_source" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500" checked>
+                                <label for="challan-search-local" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Local</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="challan-excel-filters" class="flex items-center gap-2 mb-4">
+                        <span class="text-sm font-medium text-slate-600 dark:text-slate-400">Filter by:</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div class="relative md:col-span-2">
+                            <i class="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+                            <div id="challan-item-search-loader" class="absolute left-3 top-3.5 hidden loader !w-5 !h-5"></div>
+                            <input type="text" id="challan-item-search-input" placeholder="Search for products or items..." class="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <div id="challan-item-search-results" class="search-results-dropdown hidden"></div>
+                        </div>
+                        <div class="flex items-center justify-end">
+                            <div class="relative">
+                                <button id="challan-sort-toggle-btn" class="px-4 py-2.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-sort"></i> Sort <i class="fas fa-chevron-down ml-2 text-xs"></i></button>
+                                <div id="challan-sort-dropdown" class="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg z-10 hidden p-2 space-y-1">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <hr class="border-slate-200 dark:border-slate-700">
+
+        <div class="p-6">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 uppercase text-xs font-semibold">
+                        <tr id="challan-table-head">
+                        </tr>
+                    </thead>
+                    <tbody id="challan-table-body">
+                    </tbody>
+                </table>
+                <div id="challan-table-placeholder" class="text-center py-16 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg">
+                    <i class="fas fa-clipboard-list fa-3x text-slate-300 dark:text-slate-600"></i>
+                    <p class="mt-4 font-semibold text-slate-500">No items added to the challan yet.</p>
+                    <p class="text-slate-400">Use the search boxes above to find a client and add items.</p>
+                </div>
+                <div id="challan-table-actions" class="mt-4 hidden">
+                    <button id="challan-add-custom-item-btn" class="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600">
+                        <i class="fas fa-plus mr-2"></i>Add Custom Item
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-xl flex justify-between items-center">
+             <div>
+                <h4 class="font-medium mb-2 text-slate-700 dark:text-slate-300">Categories for Export</h4>
+                <div id="challan-category-checkboxes" class="flex flex-wrap gap-x-6 gap-y-3">
+                    <div class="flex items-center"><input id="challan-cat-FDS" type="checkbox" value="FDS" name="challan_category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="challan-cat-FDS" class="ml-2 block text-sm">FDS</label></div>
+                    <div class="flex items-center"><input id="challan-cat-FPS" type="checkbox" value="FPS" name="challan_category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="challan-cat-FPS" class="ml-2 block text-sm">FPS</label></div>
+                    <div class="flex items-center"><input id="challan-cat-FD" type="checkbox" value="FD" name="challan_category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="challan-cat-FD" class="ml-2 block text-sm">FD</label></div>
+                    <div class="flex items-center"><input id="challan-cat-FC" type="checkbox" value="FC" name="challan_category" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"><label for="challan-cat-FC" class="ml-2 block text-sm">FC</label></div>
+                </div>
+                <p id="challan-filename-preview" class="text-xs text-slate-500 dark:text-slate-400 mt-2"></p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button id="save-challan-btn" disabled class="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-save"></i> Save</button>
+                <button id="save-challan-as-btn" disabled class="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-copy"></i> Save As</button>
+                <button id="export-challan-pdf-btn" disabled class="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                <button id="export-challan-xlsx-btn" disabled class="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </div>
+    </div>
+</div>
