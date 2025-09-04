@@ -1,0 +1,14 @@
+<h3 class="font-semibold text-lg mb-4 text-gray-800 dark:text-white">Send a Message/Notification</h3>
+<form id="message-form" class="space-y-4">
+    <div>
+        <label for="message-recipient" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Recipient Email</label>
+        <input id="message-recipient" type="email" required placeholder="Enter user's email or 'all' for everyone" class="w-full px-4 py-3 text-gray-900 bg-gray-100 dark:bg-gray-800 dark:text-white border rounded-lg focus:ring-2 focus:ring-indigo-500">
+    </div>
+    <div>
+        <label for="message-content" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Message</label>
+        <textarea id="message-content" rows="4" required class="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Your message here..."></textarea>
+    </div>
+    <button type="submit" class="w-full flex justify-center py-3 px-4 border rounded-lg text-white bg-indigo-600 hover:bg-indigo-700">
+        Send Message
+    </button>
+</form>
