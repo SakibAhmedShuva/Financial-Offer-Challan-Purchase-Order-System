@@ -16,11 +16,6 @@ function initializeOfferModule(deps) {
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
     let offerConfig = { bdt_conversion_rate: 125, customs_duty_percentage: 0.16 };
-    
-    // --- NEW EXCEL-LIKE SELECTION STATE ---
-    let isSelecting = false;
-    let startCell = null;
-    let endCell = null;
 
     // --- NEW EXCEL-LIKE STATE ---
     let activeCell = { row: -1, col: -1 };
@@ -1600,148 +1595,17 @@ const getDefaultFinancialLabels = () => ({
         });
     }
 
-    // --- START: MULTI-CELL SELECTION AND COPY LOGIC ---
-    const clearSelection = () => {
-        document.querySelectorAll('.cell-selected').forEach(cell => cell.classList.remove('cell-selected'));
-        document.querySelectorAll('.cell-active').forEach(cell => cell.classList.remove('cell-active'));
-    };
-
-    const selectCells = (start, end) => {
-        clearSelection();
-        if (!start || !end) return;
-
-        const startRow = Math.min(start.row, end.row);
-        const endRow = Math.max(start.row, end.row);
-        const startCol = Math.min(start.col, end.col);
-        const endCol = Math.max(start.col, end.col);
-
-        // Handle header rows
-        for (let i = startRow; i <= endRow; i++) {
-            if (i < offerTableHead.rows.length) {
-                const headerRow = offerTableHead.rows[i];
-                for (let j = startCol; j <= endCol; j++) {
-                    if (headerRow.cells[j]) {
-                        headerRow.cells[j].classList.add('cell-selected');
-                    }
-                }
-            }
-        }
-
-        // Handle body rows
-        for (let i = startRow; i <= endRow; i++) {
-            const bodyRowIndex = i - offerTableHead.rows.length;
-            if (bodyRowIndex >= 0 && bodyRowIndex < offerTableBody.rows.length) {
-                const bodyRow = offerTableBody.rows[bodyRowIndex];
-                for (let j = startCol; j <= endCol; j++) {
-                    if (bodyRow.cells[j]) {
-                        bodyRow.cells[j].classList.add('cell-selected');
-                    }
-                }
-            }
-        }
-    };
-
-    const getCellPosition = (cell) => {
-        const row = cell.parentElement;
-        const isHeader = row.parentElement === offerTableHead;
-        let rowIndex;
-        
-        if (isHeader) {
-            rowIndex = row.rowIndex;
-        } else {
-            rowIndex = offerTableHead.rows.length + row.rowIndex;
-        }
-        
-        return { row: rowIndex, col: cell.cellIndex };
-    };
-
-    // Handle mouse selection for both header and body
-    const handleMouseDown = (e) => {
-        const targetCell = e.target.closest('td, th');
-        if (!targetCell || e.button !== 0 || e.target.closest('button, input, select, a')) return;
-
-        if (!e.ctrlKey && !e.shiftKey) {
-            clearSelection();
-        }
-
-        isSelecting = true;
-        document.body.classList.add('is-selecting');
-
-        startCell = getCellPosition(targetCell);
-        endCell = startCell;
-        selectCells(startCell, endCell);
-    };
-
-    const handleMouseOver = (e) => {
-        if (!isSelecting) return;
-        const targetCell = e.target.closest('td, th');
-        if (!targetCell) return;
-
-        endCell = getCellPosition(targetCell);
-        selectCells(startCell, endCell);
-    };
-
-    // Add listeners to both header and body
-    offerTableHead.addEventListener('mousedown', handleMouseDown);
-    offerTableBody.addEventListener('mousedown', handleMouseDown);
-    offerTableHead.addEventListener('mouseover', handleMouseOver);
-    offerTableBody.addEventListener('mouseover', handleMouseOver);
-
-    window.addEventListener('mouseup', () => {
-        if (isSelecting) {
-            isSelecting = false;
-            document.body.classList.remove('is-selecting');
-        }
-    });
-
     document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-            e.preventDefault();
-            handleUndo();
-        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-            e.preventDefault();
-            handleRedo();
-        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-            const selectedCells = Array.from(offerTableBody.querySelectorAll('.cell-selected'));
-            if (selectedCells.length === 0) return;
-
-            e.preventDefault();
-
-            let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
-
-            selectedCells.forEach(cell => {
-                const rowIndex = cell.parentElement.rowIndex - 1; // -1 for tbody index
-                const colIndex = cell.cellIndex;
-                minRow = Math.min(minRow, rowIndex);
-                maxRow = Math.max(maxRow, rowIndex);
-                minCol = Math.min(minCol, colIndex);
-                maxCol = Math.max(maxCol, colIndex);
-            });
-
-            const grid = [];
-            for (let i = minRow; i <= maxRow; i++) {
-                const rowData = [];
-                for (let j = minCol; j <= maxCol; j++) {
-                    const cell = offerTableBody.rows[i]?.cells[j];
-                    if (cell && cell.classList.contains('cell-selected')) {
-                        rowData.push(cell.innerText);
-                    } else {
-                        rowData.push('');
-                    }
-                }
-                grid.push(rowData.join('\t'));
+        if (e.ctrlKey || e.metaKey) {
+            if (e.key === 'z') {
+                e.preventDefault();
+                handleUndo();
+            } else if (e.key === 'y') {
+                e.preventDefault();
+                handleRedo();
             }
-
-            const copyText = grid.join('\n');
-            navigator.clipboard.writeText(copyText).then(() => {
-                showToast('Selection copied to clipboard!');
-            }).catch(err => {
-                console.error('Failed to copy text: ', err);
-                showToast('Failed to copy selection.', true);
-            });
         }
     });
-    // --- END: MULTI-CELL SELECTION AND COPY LOGIC ---
 
     enableSummaryPageCheckbox.addEventListener('change', (e) => {
         isSummaryPageEnabled = e.target.checked;
