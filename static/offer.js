@@ -1602,7 +1602,8 @@ const getDefaultFinancialLabels = () => ({
 
     // --- START: MULTI-CELL SELECTION AND COPY LOGIC ---
     const clearSelection = () => {
-        offerTableBody.querySelectorAll('.cell-selected').forEach(cell => cell.classList.remove('cell-selected'));
+        document.querySelectorAll('.cell-selected').forEach(cell => cell.classList.remove('cell-selected'));
+        document.querySelectorAll('.cell-active').forEach(cell => cell.classList.remove('cell-active'));
     };
 
     const selectCells = (start, end) => {
@@ -1614,18 +1615,49 @@ const getDefaultFinancialLabels = () => ({
         const startCol = Math.min(start.col, end.col);
         const endCol = Math.max(start.col, end.col);
 
+        // Handle header rows
         for (let i = startRow; i <= endRow; i++) {
-            const row = offerTableBody.rows[i];
-            for (let j = startCol; j <= endCol; j++) {
-                if (row && row.cells[j]) {
-                    row.cells[j].classList.add('cell-selected');
+            if (i < offerTableHead.rows.length) {
+                const headerRow = offerTableHead.rows[i];
+                for (let j = startCol; j <= endCol; j++) {
+                    if (headerRow.cells[j]) {
+                        headerRow.cells[j].classList.add('cell-selected');
+                    }
+                }
+            }
+        }
+
+        // Handle body rows
+        for (let i = startRow; i <= endRow; i++) {
+            const bodyRowIndex = i - offerTableHead.rows.length;
+            if (bodyRowIndex >= 0 && bodyRowIndex < offerTableBody.rows.length) {
+                const bodyRow = offerTableBody.rows[bodyRowIndex];
+                for (let j = startCol; j <= endCol; j++) {
+                    if (bodyRow.cells[j]) {
+                        bodyRow.cells[j].classList.add('cell-selected');
+                    }
                 }
             }
         }
     };
 
-    offerTableBody.addEventListener('mousedown', (e) => {
-        const targetCell = e.target.closest('td');
+    const getCellPosition = (cell) => {
+        const row = cell.parentElement;
+        const isHeader = row.parentElement === offerTableHead;
+        let rowIndex;
+        
+        if (isHeader) {
+            rowIndex = row.rowIndex;
+        } else {
+            rowIndex = offerTableHead.rows.length + row.rowIndex;
+        }
+        
+        return { row: rowIndex, col: cell.cellIndex };
+    };
+
+    // Handle mouse selection for both header and body
+    const handleMouseDown = (e) => {
+        const targetCell = e.target.closest('td, th');
         if (!targetCell || e.button !== 0 || e.target.closest('button, input, select, a')) return;
 
         if (!e.ctrlKey && !e.shiftKey) {
@@ -1635,21 +1667,25 @@ const getDefaultFinancialLabels = () => ({
         isSelecting = true;
         document.body.classList.add('is-selecting');
 
-        const row = targetCell.parentElement;
-        startCell = { row: row.rowIndex - 1, col: targetCell.cellIndex };
+        startCell = getCellPosition(targetCell);
         endCell = startCell;
         selectCells(startCell, endCell);
-    });
+    };
 
-    offerTableBody.addEventListener('mouseover', (e) => {
+    const handleMouseOver = (e) => {
         if (!isSelecting) return;
-        const targetCell = e.target.closest('td');
+        const targetCell = e.target.closest('td, th');
         if (!targetCell) return;
 
-        const row = targetCell.parentElement;
-        endCell = { row: row.rowIndex - 1, col: targetCell.cellIndex };
+        endCell = getCellPosition(targetCell);
         selectCells(startCell, endCell);
-    });
+    };
+
+    // Add listeners to both header and body
+    offerTableHead.addEventListener('mousedown', handleMouseDown);
+    offerTableBody.addEventListener('mousedown', handleMouseDown);
+    offerTableHead.addEventListener('mouseover', handleMouseOver);
+    offerTableBody.addEventListener('mouseover', handleMouseOver);
 
     window.addEventListener('mouseup', () => {
         if (isSelecting) {
