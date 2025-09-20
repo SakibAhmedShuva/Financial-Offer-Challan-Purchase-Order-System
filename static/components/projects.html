@@ -1,0 +1,33 @@
+<div class="bg-white dark:bg-slate-800 shadow-md rounded-lg overflow-hidden">
+    <div class="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700">
+        <h2 class="text-xl font-semibold text-slate-800 dark:text-white">My Saved Projects</h2>
+        <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">View, load, and manage your financial offers, challans, and purchase orders.</p>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+            <thead class="text-xs text-slate-700 dark:text-slate-300 uppercase bg-slate-100 dark:bg-slate-700">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-center">Sl.</th>
+                    <th scope="col" class="px-6 py-3">Reference Number</th>
+                    <th scope="col" class="px-6 py-3 text-center">Type</th>
+                    <th scope="col" class="px-6 py-3">Date Modified</th>
+                    <th scope="col" class="px-6 py-3">Client Name</th>
+                    <th scope="col" class="px-6 py-3 text-center">Product Types</th>
+                    <th scope="col" class="px-6 py-3 text-center">Status</th>
+                    <th scope="col" class="px-6 py-3 text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="projects-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+                <tr id="projects-table-placeholder">
+                    <td colspan="8" class="text-center py-10">
+                        <div class="flex flex-col items-center">
+                            <div class="loader"></div>
+                            <p class="mt-4 font-semibold">Loading projects...</p>
+                            <p class="text-sm text-slate-500">Please wait a moment.</p>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+        </table>
+    </div>
+</div>
