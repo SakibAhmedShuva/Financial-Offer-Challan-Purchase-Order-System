@@ -95,7 +95,7 @@ class PDF(FPDF):
 
         self.set_font('Arial', '', 8)
         footer_text1 = "Corporate Office: Nurul Islam House, 110 Gulshan Avenue, Road 113, Dhaka-1212"
-        footer_text2 = "Web: www.ge-bd.com, sales@ge-bd.com, Phone: +880 1715-895144"
+        footer_text2 = "Web: www.ge-bd.com, sales@ge-bd.com, Phone: +880 1781-469951"
         
         self.cell(0, 3, footer_text1, 0, 1, 'L')
         self.cell(0, 3, footer_text2, 0, 1, 'L')
