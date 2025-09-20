@@ -1,0 +1,143 @@
+<div class="space-y-6">
+    <div class="bg-white dark:bg-slate-800 shadow-lg rounded-xl p-6 mb-6">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Purchase Order</h2>
+                <p class="text-slate-500 dark:text-slate-400 mt-1">Create, manage, and export purchase orders.</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <button id="po-new-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fas fa-plus"></i> New PO</button>
+                <div id="po-project-name-container">
+                     <div id="po-project-name" contenteditable="true" class="px-4 py-2 bg-sky-100 dark:bg-sky-900/50 text-sky-800 dark:text-sky-300 rounded-lg font-mono text-sm font-semibold hover:bg-sky-200 dark:hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all">
+                        New Purchase Order
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-x-8">
+            <div class="lg:col-span-1">
+                <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-user-check mr-3 text-sky-500"></i>1. Select Client</h3>
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+                    <input type="text" id="po-client-search-input" placeholder="Search for a client..." class="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                    <div id="po-client-search-results" class="search-results-dropdown hidden"></div>
+                </div>
+                <div id="po-selected-client-info" class="mt-4 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg hidden" title="You can edit the client name and address directly.">
+                    <p class="font-bold text-green-800 dark:text-green-200" id="po-client-name" contenteditable="true"></p>
+                    <p class="text-sm text-slate-600 dark:text-slate-400" id="po-client-address" contenteditable="true"></p>
+                </div>
+            </div>
+            <div class="lg:col-span-2">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-semibold text-lg text-slate-800 dark:text-white flex items-center"><i class="fas fa-plus-circle mr-3 text-sky-500"></i>2. Add Items</h3>
+                    <div class="flex items-center space-x-4">
+                        <h4 class="font-medium text-sm text-slate-700 dark:text-slate-300">Search In:</h4>
+                        <div class="flex items-center">
+                            <input id="po-search-foreign" type="checkbox" value="foreign" name="po_item_source" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500" checked>
+                            <label for="po-search-foreign" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Foreign</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="po-search-local" type="checkbox" value="local" name="po_item_source" class="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500">
+                            <label for="po-search-local" class="ml-2 block text-sm text-slate-900 dark:text-slate-300">Local</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="po-excel-filters" class="flex items-center gap-2 mb-4">
+                    <span class="text-sm font-medium text-slate-600 dark:text-slate-400">Filter by:</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+                        <div id="po-item-search-loader" class="absolute left-3 top-3.5 hidden loader !w-5 !h-5"></div>
+                        <input type="text" id="po-item-search-input" placeholder="Search for products or items..." class="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        <div id="po-item-search-results" class="search-results-dropdown hidden"></div>
+                    </div>
+                    <div class="flex items-center justify-end">
+                        <div class="relative">
+                            <button id="po-sort-toggle-btn" class="px-4 py-2.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-sort"></i> Sort <i class="fas fa-chevron-down ml-2 text-xs"></i></button>
+                            <div id="po-sort-dropdown" class="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg z-10 hidden p-2 space-y-1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <hr class="my-6 border-slate-200 dark:border-slate-700">
+
+        <div class="overflow-x-auto border-t border-b border-slate-200 dark:border-slate-700"><table class="w-full text-left"><thead id="po-table-head"></thead><tbody id="po-table-body"></tbody></table></div>
+        <div id="po-table-actions" class="mt-4 hidden"><button id="po-add-custom-item-btn" class="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600"><i class="fas fa-plus mr-2"></i>Add Custom Item</button></div>
+        <p id="po-table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the purchase order.</p>
+
+        <div id="po-financials-section" class="mt-6 hidden">
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
+                    <h4 id="po-usd-price-label" contenteditable="true" data-label-key="poUsdPrice" class="font-bold text-lg mb-2">PO Total (USD)</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span id="po-subtotal-usd-label" contenteditable="true" data-label-key="subtotalUsd">Subtotal:</span> <span id="po-subtotal-usd" class="font-medium"></span></div>
+                        <div class="flex justify-between items-center">
+                            <span> 
+                                <span id="po-freight-label" contenteditable="true" data-label-key="freight">Freight:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="freight_usd">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="freight_usd">+</button>
+                            </span>
+                            <input type="number" data-type="freight_usd_value" class="financial-input w-24 p-1 text-right rounded bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 focus:ring-sky-500 hidden" value="0">
+                        </div>
+                        <div class="flex justify-between items-center text-red-500 dark:text-red-400 font-semibold">
+                            <span>
+                                <span id="po-discount-usd-label" contenteditable="true" data-label-key="discountUsd">Discount:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="discount_usd">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="discount_usd">+</button>
+                            </span>
+                            <input type="number" data-type="discount_usd_value" class="financial-input w-24 p-1 text-right rounded bg-red-50 dark:bg-red-900/50 border-red-300 hidden" value="0">
+                        </div>
+                        <hr class="dark:border-slate-600 my-1">
+                        <div class="flex justify-between font-bold text-base"><span id="po-grandtotal-usd-label" contenteditable="true" data-label-key="grandtotalUsd">Grand Total (USD):</span> <span id="po-grand-total-usd"></span></div>
+                    </div>
+                </div>
+                <div class="p-4 border rounded-lg dark:border-slate-700 space-y-2">
+                    <h4 id="po-bdt-price-label" contenteditable="true" data-label-key="poBdtPrice" class="font-bold text-lg mb-2">PO Total (BDT)</h4>
+                     <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span id="po-subtotal-bdt-label" contenteditable="true" data-label-key="subtotalBdt">Subtotal:</span> <span id="po-subtotal-bdt" class="font-medium"></span></div>
+                        <div class="flex justify-between items-center text-red-500 dark:text-red-400 font-semibold">
+                            <span>
+                                <span id="po-discount-bdt-label" contenteditable="true" data-label-key="discountBdt">Discount:</span>
+                                <button class="remove-charge-btn text-red-500 hidden" data-type="discount_bdt">&times;</button>
+                                <button class="add-charge-btn text-green-500" data-type="discount_bdt">+</button>
+                            </span>
+                            <input type="number" data-type="discount_bdt_value" class="financial-input w-24 p-1 text-right rounded bg-red-50 dark:bg-red-900/50 border-red-300 hidden" value="0">
+                        </div>
+                        <hr class="dark:border-slate-600 my-1">
+                        <div class="flex justify-between font-bold text-base"><span id="po-grandtotal-bdt-label" contenteditable="true" data-label-key="grandtotalBdt">Grand Total (BDT):</span> <span id="po-grand-total-bdt"></span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
+         <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-file-contract mr-3 text-sky-500"></i>Terms & Conditions</h3>
+        <textarea id="po-tnc-textarea" rows="12" class="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="Enter terms and conditions for the purchase order..."></textarea>
+    </div>
+
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md">
+         <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-check-circle mr-3 text-sky-500"></i>3. Finalize and Export</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <h4 class="font-medium mb-3 text-slate-700 dark:text-slate-300">Categories for Export</h4>
+                <div id="po-category-checkboxes" class="flex flex-wrap gap-x-6 gap-y-3">
+                </div>
+            </div>
+            <div class="flex items-end justify-end space-x-3">
+                <button id="po-save-btn" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-save"></i> Save PO</button>
+                <button id="po-export-pdf-btn" class="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                <button id="po-export-xlsx-btn" class="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200 shadow-sm"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            </div>
+        </div>
+    </div>
+</div>
