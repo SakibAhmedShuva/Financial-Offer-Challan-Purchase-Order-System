@@ -16,6 +16,11 @@ function initializeOfferModule(deps) {
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
     let offerConfig = { bdt_conversion_rate: 125, customs_duty_percentage: 0.16 };
+    
+    // --- NEW EXCEL-LIKE SELECTION STATE ---
+    let isSelecting = false;
+    let startCell = null;
+    let endCell = null;
 
     // --- NEW EXCEL-LIKE STATE ---
     let activeCell = { row: -1, col: -1 };
@@ -1595,17 +1600,112 @@ const getDefaultFinancialLabels = () => ({
         });
     }
 
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-            if (e.key === 'z') {
-                e.preventDefault();
-                handleUndo();
-            } else if (e.key === 'y') {
-                e.preventDefault();
-                handleRedo();
+    // --- START: MULTI-CELL SELECTION AND COPY LOGIC ---
+    const clearSelection = () => {
+        offerTableBody.querySelectorAll('.cell-selected').forEach(cell => cell.classList.remove('cell-selected'));
+    };
+
+    const selectCells = (start, end) => {
+        clearSelection();
+        if (!start || !end) return;
+
+        const startRow = Math.min(start.row, end.row);
+        const endRow = Math.max(start.row, end.row);
+        const startCol = Math.min(start.col, end.col);
+        const endCol = Math.max(start.col, end.col);
+
+        for (let i = startRow; i <= endRow; i++) {
+            const row = offerTableBody.rows[i];
+            for (let j = startCol; j <= endCol; j++) {
+                if (row && row.cells[j]) {
+                    row.cells[j].classList.add('cell-selected');
+                }
             }
         }
+    };
+
+    offerTableBody.addEventListener('mousedown', (e) => {
+        const targetCell = e.target.closest('td');
+        if (!targetCell || e.button !== 0 || e.target.closest('button, input, select, a')) return;
+
+        if (!e.ctrlKey && !e.shiftKey) {
+            clearSelection();
+        }
+
+        isSelecting = true;
+        document.body.classList.add('is-selecting');
+
+        const row = targetCell.parentElement;
+        startCell = { row: row.rowIndex - 1, col: targetCell.cellIndex };
+        endCell = startCell;
+        selectCells(startCell, endCell);
     });
+
+    offerTableBody.addEventListener('mouseover', (e) => {
+        if (!isSelecting) return;
+        const targetCell = e.target.closest('td');
+        if (!targetCell) return;
+
+        const row = targetCell.parentElement;
+        endCell = { row: row.rowIndex - 1, col: targetCell.cellIndex };
+        selectCells(startCell, endCell);
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (isSelecting) {
+            isSelecting = false;
+            document.body.classList.remove('is-selecting');
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            handleUndo();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            handleRedo();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            const selectedCells = Array.from(offerTableBody.querySelectorAll('.cell-selected'));
+            if (selectedCells.length === 0) return;
+
+            e.preventDefault();
+
+            let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+
+            selectedCells.forEach(cell => {
+                const rowIndex = cell.parentElement.rowIndex - 1; // -1 for tbody index
+                const colIndex = cell.cellIndex;
+                minRow = Math.min(minRow, rowIndex);
+                maxRow = Math.max(maxRow, rowIndex);
+                minCol = Math.min(minCol, colIndex);
+                maxCol = Math.max(maxCol, colIndex);
+            });
+
+            const grid = [];
+            for (let i = minRow; i <= maxRow; i++) {
+                const rowData = [];
+                for (let j = minCol; j <= maxCol; j++) {
+                    const cell = offerTableBody.rows[i]?.cells[j];
+                    if (cell && cell.classList.contains('cell-selected')) {
+                        rowData.push(cell.innerText);
+                    } else {
+                        rowData.push('');
+                    }
+                }
+                grid.push(rowData.join('\t'));
+            }
+
+            const copyText = grid.join('\n');
+            navigator.clipboard.writeText(copyText).then(() => {
+                showToast('Selection copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                showToast('Failed to copy selection.', true);
+            });
+        }
+    });
+    // --- END: MULTI-CELL SELECTION AND COPY LOGIC ---
 
     enableSummaryPageCheckbox.addEventListener('change', (e) => {
         isSummaryPageEnabled = e.target.checked;
