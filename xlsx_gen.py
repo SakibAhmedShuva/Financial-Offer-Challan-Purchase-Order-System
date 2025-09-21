@@ -734,6 +734,7 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         if i == 0:
             first_boq_sheet = boq_ws
         
+        # Add Title and Client Info to each sheet if not using a summary page
         if not is_summary_enabled:
             title_cell = boq_ws.cell(row=1, column=1, value="Financial Offer")
             boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
