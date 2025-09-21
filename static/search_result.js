@@ -108,12 +108,12 @@ function renderItemResults(items, onSelect, currentUser) {
     const headers = ['Make', 'Type', 'Approvals', 'Item Code', 'Description', 'Model', 'Offer Price'];
     const colgroup = `
         <colgroup>
-            <col style="width: 10%;">
+            <col style="width: 8%;">
+            <col style="width: 6%;">
             <col style="width: 8%;">
             <col style="width: 10%;">
-            <col style="width: 10%;">
             <col style="width: 44%;">
-            <col style="width: 10%;">
+            <col style="width: 16%;">
             <col style="width: 8%;">
         </colgroup>
     `;
@@ -141,13 +141,13 @@ function renderItemResults(items, onSelect, currentUser) {
         const formattedPrice = !isNaN(priceValue) ? priceValue.toFixed(2) : '-';
 
         const cells = [
-            { value: item.make || '-', align: 'center', truncate: true },
+            { value: item.make || '-', align: 'center', truncate: false },
             // FIX: This now correctly uses item.product_type for the 'Type' column.
-            { value: item.product_type || '-', align: 'center', truncate: true },
-            { value: item.approvals || '-', align: 'center', truncate: true },
-            { value: item.item_code || '-', align: 'center', truncate: true },
+            { value: item.product_type || '-', align: 'center', truncate: false },
+            { value: item.approvals || '-', align: 'center', truncate: false },
+            { value: item.item_code || '-', align: 'center', truncate: false },
             { value: item.description || '-', align: 'left', truncate: false },
-            { value: item.model || '-', align: 'center', truncate: true },
+            { value: item.model || '-', align: 'center', truncate: false },
             { value: formattedPrice, align: 'right', truncate: true },
         ];
 
