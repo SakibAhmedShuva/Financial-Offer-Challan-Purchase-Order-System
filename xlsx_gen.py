@@ -17,15 +17,6 @@ def safe_float(value, default=0.0):
     except (ValueError, TypeError):
         return default
 
-# --- NEW: Helper to sanitize sheet names for Excel ---
-def sanitize_sheet_name(name):
-    # Excel sheet names cannot be longer than 31 characters
-    # and cannot contain certain characters.
-    if not name:
-        return "Sheet"
-    name = re.sub(r'[\\/*?:\[\]]', '', name)
-    return name[:31]
-
 # --- XLSX Generation Functions ---
 def parse_html_to_richtext(html_string):
     if not isinstance(html_string, str): return str(html_string) if html_string is not None else ''
@@ -372,8 +363,8 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 number_format_overrides={'foreign': bdt_format}
             )
 
-def draw_boq_sheet(ws, data, items, header_color_hex, financial_labels, is_local_only):
-    user_info = data.get('user', {})
+def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
+    user_info, items = data.get('user', {}), data.get('items', [])
     visible_columns = data.get('visibleColumns', {})
     user_role = user_info.get('role', 'user')
 
@@ -478,9 +469,10 @@ def draw_boq_sheet(ws, data, items, header_color_hex, financial_labels, is_local
 
 def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     wb = Workbook()
-    wb.remove(wb.active) # Remove the default sheet
     
+    items = data.get('items', [])
     financials = data.get('financials', {})
+
     is_summary_enabled = data.get('isSummaryPageEnabled', False)
     financial_labels = data.get('financialLabels', {})
     
@@ -512,12 +504,9 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     visible_count = sum([visible_columns.get(key) for key in ['foreign_price', 'local_supply_price', 'installation_price', 'po_price'] if visible_columns.get(key)])
     end_col = 4 + (visible_count * 2)
 
-    sheets = data.get('sheets', [])
-    if not sheets and 'items' in data: # Backward compatibility
-        sheets = [{'name': 'Bill of Quantities', 'items': data.get('items', [])}]
-
     if is_summary_enabled:
-        ws = wb.create_sheet("Financial Summary")
+        ws = wb.active
+        ws.title = "Financial Summary"
         summary_scopes = data.get('summaryScopes', {})
         
         title_font = Font(name='Calibri', size=14, bold=True, underline='single')
@@ -661,6 +650,7 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             for col in range(1, 5): ws.cell(row=current_row_idx, column=col).border = thin_border
             current_row_idx += 1
 
+        # Grand Total Formula
         usd_parts = [v['usd'] for k, v in summary_cell_coords.items() if 'usd' in v and summary_cell_coords[k]['usd'] is not None]
         bdt_parts = [v['bdt'] for k, v in summary_cell_coords.items() if 'bdt' in v and summary_cell_coords[k]['bdt'] is not None]
         grand_total_usd_formula = f"=SUM({','.join(usd_parts)})" if usd_parts else 0
@@ -721,42 +711,40 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         ws.column_dimensions['C'].width = 25
         ws.column_dimensions['D'].width = 35
 
-    # --- Loop through each sheet in the data and create a worksheet for it ---
-    first_boq_sheet = None
-    for i, sheet_data in enumerate(sheets):
-        sheet_name = sanitize_sheet_name(sheet_data.get('name', 'Sheet'))
-        sheet_items = sheet_data.get('items', [])
-
-        if not sheet_items and (is_summary_enabled or len(sheets) > 1):
-            continue
-
-        boq_ws = wb.create_sheet(sheet_name)
-        if i == 0:
-            first_boq_sheet = boq_ws
+        boq_ws = wb.create_sheet("Bill of Quantities")
         
-        # Add Title and Client Info to each sheet if not using a summary page
-        if not is_summary_enabled:
-            title_cell = boq_ws.cell(row=1, column=1, value="Financial Offer")
-            boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
-            title_cell.font = Font(name='Calibri', size=16, bold=True)
-            title_cell.fill = header_fill
-            title_cell.alignment = center_align_wrap
-            boq_ws.append([])
-            
-            boq_ws.append(['Ref:', display_reference])
-            boq_ws['A3'].font = bold_font
-            boq_ws.append(['Client:', client_info.get('name', 'N/A')])
-            boq_ws['A4'].font = bold_font
-            boq_ws.append(['Address:', client_info.get('address', 'N/A')])
-            boq_ws['A5'].font = bold_font
-            boq_ws.append([])
+        boq_title_cell = boq_ws.cell(row=1, column=1, value="Bill of Quantities")
+        boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
+        boq_title_cell.font = Font(name='Calibri', size=16, bold=True)
+        boq_title_cell.fill = header_fill
+        boq_title_cell.alignment = center_align_wrap
+        boq_ws.append([])
 
-        draw_boq_sheet(boq_ws, data, sheet_items, header_color_hex, financial_labels, is_local_only)
-
-    # --- If not using a summary page, add consolidated "In Words" to the first BOQ sheet ---
-    if not is_summary_enabled and first_boq_sheet:
-        ws = first_boq_sheet
+        draw_boq_sheet(boq_ws, data, header_color_hex, financial_labels, is_local_only)
+        
+    else:
+        ws = wb.active
+        ws.title = "Financial Offer"
+        
+        title_cell = ws.cell(row=1, column=1, value="Financial Offer")
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
+        title_cell.font = Font(name='Calibri', size=16, bold=True)
+        title_cell.fill = header_fill
+        title_cell.alignment = center_align_wrap
+        ws.append([])
+        
+        ws.append(['Ref:', display_reference])
+        ws['A3'].font = bold_font
+        ws.append(['Client:', client_info.get('name', 'N/A')])
+        ws['A4'].font = bold_font
+        ws.append(['Address:', client_info.get('address', 'N/A')])
+        ws['A5'].font = bold_font
+        ws.append([])
+        
+        draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only)
+        
         current_row_idx = ws.max_row + 2
+        
         max_col_for_merge = ws.max_column
 
         if data.get('has_foreign_part'):
@@ -794,8 +782,10 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
 
     add_tnc_to_excel(wb, data.get('terms_and_conditions', ''), header_color_hex, auth_dir, data)
     
-    if wb.sheetnames:
-        wb.active = wb[wb.sheetnames[0]]
+    if 'Financial Summary' in wb.sheetnames:
+        wb.active = wb['Financial Summary']
+    elif 'Financial Offer' in wb.sheetnames:
+        wb.active = wb['Financial Offer']
         
     return wb
 
