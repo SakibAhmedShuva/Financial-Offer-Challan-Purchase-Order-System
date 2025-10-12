@@ -16,6 +16,7 @@ function initializeOfferModule(deps) {
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
     let offerConfig = { bdt_conversion_rate: 125, customs_duty_percentage: 0.16 };
+    let spreadsheet = null; // To hold the jspreadsheet instance
 
     // --- NEW EXCEL-LIKE STATE ---
     let activeCell = { row: -1, col: -1 };
@@ -101,10 +102,11 @@ const getDefaultFinancialLabels = () => ({
     let captureTimeout;
 
     // --- DOM ELEMENTS ---
+    const spreadsheetContainer = document.getElementById('spreadsheet-container'); // NEW
     const newOfferBtn = document.getElementById('new-offer-btn');
     const clientSearchInput = document.getElementById('client-search-input'), clientSearchResults = document.getElementById('client-search-results'), selectedClientInfo = document.getElementById('selected-client-info');
     const itemSearchInput = document.getElementById('item-search-input'), itemSearchResults = document.getElementById('item-search-results'), itemSearchLoader = document.getElementById('item-search-loader');
-    const offerTableHead = document.getElementById('offer-table-head'), offerTableBody = document.getElementById('offer-table-body'), tablePlaceholder = document.getElementById('table-placeholder');
+    const tablePlaceholder = document.getElementById('table-placeholder');
     const offerCategoryCheckboxes = document.getElementById('offer-category-checkboxes');
     const saveProjectBtn = document.getElementById('save-project-btn'), saveAsBtn = document.getElementById('save-as-btn'), exportPdfBtn = document.getElementById('export-pdf-btn'), exportXlsxBtn = document.getElementById('export-xlsx-btn');
     const financialsSection = document.getElementById('financials-section'), offerTableActions = document.getElementById('offer-table-actions');
@@ -891,138 +893,244 @@ const getDefaultFinancialLabels = () => ({
 
 
     const renderOfferTable = () => {
-        cleanupSuggestions();
-        offerTableHead.innerHTML = '';
-        offerTableBody.innerHTML = '';
-
-        sortOfferItems();
-
         const hasItems = offerItems.length > 0;
         financialsSection.classList.toggle('hidden', !hasItems);
         tablePlaceholder.style.display = hasItems ? 'none' : 'block';
         offerTableActions.style.display = 'block';
 
         if (!hasItems) {
-             renderFinancialSummaryUI();
-             suggestCovers();
-             return;
+            spreadsheetContainer.innerHTML = '';
+            spreadsheet = null;
+            renderFinancialSummaryUI();
+            suggestCovers();
+            return;
         }
 
-        const headerRow1 = document.createElement('tr');
-        const headerRow2 = document.createElement('tr');
-        const addHeader = (row, text, opts = {}) => {
-            const th = document.createElement('th');
-            th.innerHTML = text;
-            th.className = `px-2 py-2 border border-slate-300 dark:border-slate-600 text-center align-middle ${opts.className || ''}`;
-            if(opts.rowSpan) th.rowSpan = opts.rowSpan;
-            if(opts.colSpan) th.colSpan = opts.colSpan;
-            row.appendChild(th);
-        };
+        sortOfferItems();
 
-        addHeader(headerRow1, '<i class="fas fa-grip-vertical text-slate-400"></i>', { rowSpan: 2 });
-        addHeader(headerRow1, 'SL NO', { rowSpan: 2 });
-        addHeader(headerRow1, 'DESCRIPTION', { rowSpan: 2, className: 'w-1/3' });
-        addHeader(headerRow1, 'QTY', { rowSpan: 2 });
-        addHeader(headerRow1, 'UNIT', { rowSpan: 2 });
+        const data = offerItems.map((item, index) => {
+            return [
+                index + 1,
+                item.description || '',
+                item.qty || 1,
+                item.unit || 'Pcs',
+                item.foreign_price_usd || 0,
+                `=C${index + 1}*E${index + 1}`,
+                item.po_price_usd || 0,
+                `=C${index + 1}*G${index + 1}`,
+                item.local_supply_price_bdt || 0,
+                `=C${index + 1}*I${index + 1}`,
+                item.installation_price_bdt || 0,
+                `=C${index + 1}*K${index + 1}`,
+                item.make || 'MISC',
+                // Hidden columns to store metadata
+                item.item_code || '',
+                item.source_type || 'custom',
+                JSON.stringify(item.isCustom || {})
+            ];
+        });
 
-        const priceHeaders = [
-            { title: 'FOREIGN PRICE', currency: 'USD', key: 'foreign_price', price_key: 'foreign_price_usd', total_key: 'foreign_total_usd', is_visible: visibleColumns.foreign_price },
-            { title: 'PO PRICE', currency: 'USD', key: 'po_price', price_key: 'po_price_usd', total_key: 'po_total_usd', is_visible: currentUser.role === 'admin' && visibleColumns.po_price},
-            { title: 'LOCAL SUPPLY PRICE', currency: 'BDT', key: 'local_supply_price', price_key: 'local_supply_price_bdt', total_key: 'local_supply_total_bdt', is_visible: visibleColumns.local_supply_price},
-            { title: 'INSTALLATION PRICE', currency: 'BDT', key: 'installation_price', price_key: 'installation_price_bdt', total_key: 'installation_total_bdt', is_visible: visibleColumns.installation_price }
+        const nestedHeaders = [
+            { title: ' ', colspan: 4 },
         ];
 
-        priceHeaders.forEach(h => {
-            if(!h.is_visible) return;
-            addHeader(headerRow1, h.title, { colSpan: 2, className: `${h.key}-col text-center` });
-            addHeader(headerRow2, `PRICE (${h.currency})`, { className: `${h.key}-col` });
-            addHeader(headerRow2, `TOTAL (${h.currency})`, { className: `${h.key}-col` });
-        });
+        const columns = [
+            { type: 'number', title: 'SL', width: 50, readOnly: true },
+            { type: 'richtext', title: 'DESCRIPTION', width: 450, wordWrap: true },
+            { type: 'numeric', title: 'QTY', width: 80, mask: '#,##0' },
+            { type: 'text', title: 'UNIT', width: 100 },
+        ];
+        
+        // Dynamically add price columns based on visibility
+        if (visibleColumns.foreign_price) {
+            nestedHeaders.push({ title: financialLabels.foreignPrice || 'FOREIGN PRICE', colspan: 2 });
+            columns.push(
+                { type: 'numeric', title: 'PRICE (USD)', mask: '$ #,##0.00', width: 150 },
+                { type: 'numeric', title: 'TOTAL (USD)', mask: '$ #,##0.00', width: 150, readOnly: true }
+            );
+        }
+        if (currentUser.role === 'admin' && visibleColumns.po_price) {
+            nestedHeaders.push({ title: 'PO PRICE', colspan: 2 });
+            columns.push(
+                { type: 'numeric', title: 'PRICE (USD)', mask: '$ #,##0.00', width: 150 },
+                { type: 'numeric', title: 'TOTAL (USD)', mask: '$ #,##0.00', width: 150, readOnly: true }
+            );
+        }
+        if (visibleColumns.local_supply_price) {
+            nestedHeaders.push({ title: financialLabels.localPrice || 'LOCAL SUPPLY PRICE', colspan: 2 });
+            columns.push(
+                { type: 'numeric', title: 'PRICE (BDT)', mask: 'BDT #,##0.00', width: 150 },
+                { type: 'numeric', title: 'TOTAL (BDT)', mask: 'BDT #,##0.00', width: 150, readOnly: true }
+            );
+        }
+        if (visibleColumns.installation_price) {
+            nestedHeaders.push({ title: financialLabels.installationPrice || 'INSTALLATION PRICE', colspan: 2 });
+            columns.push(
+                { type: 'numeric', title: 'PRICE (BDT)', mask: 'BDT #,##0.00', width: 150 },
+                { type: 'numeric', title: 'TOTAL (BDT)', mask: 'BDT #,##0.00', width: 150, readOnly: true }
+            );
+        }
 
-        addHeader(headerRow1, 'CATEGORY', { rowSpan: 2, className: 'text-center w-[10%]' });
-        addHeader(headerRow1, 'Action', { rowSpan: 2 });
-        offerTableHead.appendChild(headerRow1);
-        offerTableHead.appendChild(headerRow2);
+        nestedHeaders.push({ title: ' ', colspan: 1 });
+        columns.push(
+            { type: 'dropdown', title: 'CATEGORY', width: 120, source: ['FDS', 'FPS', 'FD', 'FC', 'MISC'] }
+        );
 
-        offerItems.forEach((item, index) => {
-            const row = document.createElement('tr');
-            row.dataset.itemIndex = index;
+        // Hidden metadata columns
+        columns.push({ type: 'text', title: 'item_code', width: 0.1 });
+        columns.push({ type: 'text', title: 'source_type', width: 0.1 });
+        columns.push({ type: 'text', title: 'isCustom', width: 0.1 });
+        
+        if (spreadsheet) {
+            spreadsheet.destroy();
+            spreadsheet = null;
+        }
 
-            let rowClasses = "border-t border-slate-200 dark:border-slate-700";
-            if (item.source_type !== 'foreign' && currentSortOrder !== 'source_foreign') {
-                rowClasses += " bg-slate-100 dark:bg-slate-700/50";
-            }
-            if (item.source_type === 'foreign' && currentSortOrder === 'source_foreign') {
-                 rowClasses += " bg-blue-50 dark:bg-blue-900/20";
-            }
-            row.className = rowClasses;
+        spreadsheet = jspreadsheet(spreadsheetContainer, {
+            data: data,
+            nestedHeaders: [nestedHeaders],
+            columns: columns,
+            allowInsertRow: true,
+            allowDeleteRow: true,
+            rowDrag: true,
+            columnDrag: false,
+            columnResize: true,
+            tableOverflow: true,
+            tableHeight: 'auto',
+            license: 'NWU1ZTdkYjY4N2M5ZDA2ZDA2M2JjMWQwYTUwYjhiNTE5MjRlMjE0NTU5OTg4ZGYzMDllMDRmYTdiYmE4ODVlYTc3ZTZkMTQ1MzgxNmMzNTZiYjkxMjkzY2I5ZTA3OGQyNGM0NmY3OWExMmI3MDMxYjE2Y2UzZmY0MmM1M2U2MTAsZXlKdVlXMWxJam9pU25Od2NtVmhaSE5vWldWMElpd2laR0YwWlNJNk1UWTRPRFUzTkRBNE1Td2libVYwWlhKd2JTSjkuNG0wVjVHRmdnQnU5M25jMFFuTVFfLVZmMFlqU0EwYnF4Zlp6WnNVRjRLbw==',
+            onafterchanges: (instance, records) => {
+                if (isRestoringState) return;
 
-            let rowHTML = `
-                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle" draggable="true"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
-                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
-                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
-                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
-                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-center" contenteditable="true" data-field="unit">${item.unit || 'Pcs'}</td>`;
+                records.forEach(record => {
+                    const [row, col, oldValue, newValue] = record;
+                    const item = offerItems[row];
+                    if (!item) return;
 
-            priceHeaders.forEach(h => {
-                if(h.is_visible) {
-                    const unitPrice = parseFloat(item[h.price_key] || 0);
-                    const totalValue = parseFloat(item[h.total_key] || 0);
-                    const locale = h.currency === 'USD' ? 'en-US' : 'en-BD';
-                    const formattedTotal = totalValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    const formattedUnitPrice = unitPrice.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const colName = instance.getHeader(col);
 
-                    const isModifiedPrice = typeof item.isCustom === 'object' && item.isCustom !== null && item.isCustom[h.price_key];
-                    let priceCellClass = '';
-                    let showSaveBtn = false;
-
-                    if (isModifiedPrice) {
-                        priceCellClass = 'text-red-500 font-bold';
+                    // Map column titles back to item properties
+                    if (colName === 'DESCRIPTION') item.description = newValue;
+                    if (colName === 'QTY') item.qty = parseFloat(newValue) || 1;
+                    if (colName === 'UNIT') item.unit = newValue;
+                    if (colName === 'CATEGORY') item.make = newValue;
+                    if (colName === 'PRICE (USD)') {
+                        if (visibleColumns.foreign_price && instance.getHeader(col - 1, true).includes('FOREIGN')) {
+                            item.foreign_price_usd = parseFloat(newValue) || 0;
+                            if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
+                            item.isCustom['foreign_price_usd'] = true;
+                        } else if (visibleColumns.po_price && instance.getHeader(col - 1, true).includes('PO')) {
+                            item.po_price_usd = parseFloat(newValue) || 0;
+                        }
+                    }
+                    if (colName === 'PRICE (BDT)') {
+                        if (visibleColumns.local_supply_price && instance.getHeader(col - 1, true).includes('LOCAL')) {
+                            item.local_supply_price_bdt = parseFloat(newValue) || 0;
+                            if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
+                            item.isCustom['local_supply_price_bdt'] = true;
+                        } else if (visibleColumns.installation_price && instance.getHeader(col - 1, true).includes('INSTALLATION')) {
+                            item.installation_price_bdt = parseFloat(newValue) || 0;
+                            if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
+                            item.isCustom['installation_price_bdt'] = true;
+                        }
                     }
 
-                    if (isModifiedPrice && h.key === 'installation_price' && currentUser.role === 'admin' && unitPrice > 0 && item.item_code) {
-                        showSaveBtn = true;
-                    }
+                    // Update totals in internal state
+                    const qty = item.qty || 1;
+                    item.foreign_total_usd = (qty * (item.foreign_price_usd || 0)).toFixed(2);
+                    item.po_total_usd = (qty * (item.po_price_usd || 0)).toFixed(2);
+                    item.local_supply_total_bdt = (qty * (item.local_supply_price_bdt || 0)).toFixed(2);
+                    item.installation_total_bdt = (qty * (item.installation_price_bdt || 0)).toFixed(2);
+                });
 
-                    const saveBtnHtml = showSaveBtn
-                        ? `<button class="save-price-to-master-btn text-xs text-green-500 hover:text-green-700 p-0.5 ml-1" title="Save this price to master list"
-                                   data-item-code="${item.item_code}"
-                                   data-price-type="${h.key}"
-                                   data-price-value="${unitPrice.toFixed(2)}"
-                                   data-description="${htmlToText(item.description)}"
-                                   data-unit="${item.unit || 'Pcs'}"
-                                   data-product-type="${item.make || 'MISC'}"
-                                   data-source-type="${item.source_type || 'local'}"
-                           ><i class="fas fa-save"></i></button>`
-                        : '';
-
-                    rowHTML += `
-                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right ${priceCellClass}" contenteditable="true" data-field="${h.price_key}">${formattedUnitPrice}${saveBtnHtml}</td>
-                        <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${formattedTotal}</td>`;
-                }
-            });
-
-            rowHTML += `
-                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 align-middle">
-                    <select data-field="make" class="w-full p-1 bg-transparent dark:bg-slate-700 rounded border-slate-300 dark:border-slate-600 focus:ring-sky-500 text-center">
-                        <option value="FDS" ${item.make === 'FDS' ? 'selected' : ''}>FDS</option>
-                        <option value="FPS" ${item.make === 'FPS' ? 'selected' : ''}>FPS</option>
-                        <option value="FD" ${item.make === 'FD' ? 'selected' : ''}>FD</option>
-                        <option value="FC" ${item.make === 'FC' ? 'selected' : ''}>FC</option>
-                        <option value="MISC" ${item.make === 'MISC' ? 'selected' : ''}>MISC</option>
-                    </select>
-                </td>
-                <td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-1">
-                    <button class="add-row-after-btn text-slate-400 hover:text-green-500 p-1" title="Add Row After"><i class="fas fa-plus-circle"></i></button>
-                    <button class="remove-item-btn text-slate-400 hover:text-red-500 p-1" title="Remove Item"><i class="fas fa-trash"></i></button>
-                </td>`;
-            row.innerHTML = rowHTML;
-            offerTableBody.appendChild(row);
+                updateFinancialSummary();
+                renderFinancialSummaryUI();
+                captureState();
+            },
+            oninsertrow: () => {
+                if(isRestoringState) return;
+                // Defer to allow jspreadsheet to complete its own logic
+                setTimeout(() => {
+                    offerItems = spreadsheet.getData(false, true).map(row => mapRowToItem(row));
+                    renderOfferTable();
+                    captureState();
+                }, 50);
+            },
+            ondeleterow: (instance, startRow, numOfRows) => {
+                 if(isRestoringState) return;
+                 offerItems.splice(startRow, numOfRows);
+                 setTimeout(() => {
+                    renderOfferTable();
+                    renderOfferCategoryCheckboxes();
+                    updateActionButtons();
+                    captureState();
+                 }, 50);
+            },
+            onmoverow: (instance, from, to) => {
+                if(isRestoringState) return;
+                const item = offerItems.splice(from, 1)[0];
+                offerItems.splice(to, 0, item);
+                currentSortOrder = 'custom';
+                setupSortDropdown();
+                setTimeout(() => {
+                    renderOfferTable();
+                    captureState();
+                }, 50);
+            }
         });
+
+        // Helper to map spreadsheet row array to our item object structure
+        const mapRowToItem = (row) => {
+            let colIndex = 0;
+            const item = {};
+
+            item.description = row[colIndex++] || '';
+            item.qty = parseFloat(row[colIndex++]) || 1;
+            item.unit = row[colIndex++] || 'Pcs';
+            
+            if (visibleColumns.foreign_price) {
+                item.foreign_price_usd = parseFloat(row[colIndex++]) || 0;
+                colIndex++; // Skip total
+            }
+            if (currentUser.role === 'admin' && visibleColumns.po_price) {
+                item.po_price_usd = parseFloat(row[colIndex++]) || 0;
+                colIndex++; // Skip total
+            }
+            if (visibleColumns.local_supply_price) {
+                item.local_supply_price_bdt = parseFloat(row[colIndex++]) || 0;
+                colIndex++; // Skip total
+            }
+            if (visibleColumns.installation_price) {
+                item.installation_price_bdt = parseFloat(row[colIndex++]) || 0;
+                colIndex++; // Skip total
+            }
+            
+            item.make = row[colIndex++] || 'MISC';
+
+            // Hidden fields
+            item.item_code = row[colIndex++] || '';
+            item.source_type = row[colIndex++] || 'custom';
+            try {
+                item.isCustom = JSON.parse(row[colIndex++] || '{}');
+            } catch(e) {
+                item.isCustom = {};
+            }
+
+            // Recalculate totals
+            const qty = item.qty;
+            item.foreign_total_usd = (qty * (item.foreign_price_usd || 0)).toFixed(2);
+            item.po_total_usd = (qty * (item.po_price_usd || 0)).toFixed(2);
+            item.local_supply_total_bdt = (qty * (item.local_supply_price_bdt || 0)).toFixed(2);
+            item.installation_total_bdt = (qty * (item.installation_price_bdt || 0)).toFixed(2);
+
+            return item;
+        };
+
+
         updateFinancialSummary();
         renderFinancialSummaryUI();
         checkAdminToolsVisibility();
     };
+
 
     const renderOfferCategoryCheckboxes = (savedCategories = null) => {
         const allCategories = ['FDS', 'FPS', 'FD', 'FC'];
@@ -1732,13 +1840,12 @@ const getDefaultFinancialLabels = () => ({
             renderOfferTable();
             updateActionButtons();
             captureState();
-
-            const newRow = offerTableBody.querySelector(`tr[data-item-index="${offerItems.length - 1}"]`);
-            if (newRow) {
-                const descCell = newRow.querySelector('[data-field="description"]');
-                if (descCell) {
-                    descCell.focus();
-                }
+            
+            if (spreadsheet) {
+                setTimeout(() => {
+                    spreadsheet.focus();
+                    spreadsheet.updateSelectionFromCoords(1, offerItems.length - 1);
+                }, 100);
             }
         });
     }
@@ -1977,207 +2084,6 @@ const getDefaultFinancialLabels = () => ({
         itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
         captureState();
     });
-
-    offerTableBody.addEventListener('paste', e => {
-        const target = e.target;
-        const field = target.dataset.field;
-        const isNumericField = field && (field.includes('price') || field === 'qty');
-
-        if (target.matches('[contenteditable]') && isNumericField) {
-            e.preventDefault();
-            const text = (e.clipboardData || window.clipboardData).getData('text');
-            const sanitizedText = text.replace(/,/g, '');
-            document.execCommand('insertText', false, sanitizedText);
-        }
-    });
-
-    offerTableBody.addEventListener('input', (e) => {
-        const target = e.target;
-        const row = target.closest('tr'); if (!row) return;
-        const itemIndex = parseInt(row.dataset.itemIndex, 10);
-        const item = offerItems[itemIndex]; if (!item) return;
-
-        const field = target.dataset.field;
-        if (field) {
-            if (field === 'description') {
-                handleDescriptionInput(e);
-                item[field] = target.innerHTML;
-            } else {
-                const rawValue = target.matches('[contenteditable]') ? target.textContent : target.value;
-                if (field.includes('price')) {
-                    item[field] = rawValue.replace(/,/g, '');
-                } else {
-                    item[field] = rawValue;
-                }
-
-                if (field.includes('price')) {
-                    if (typeof item.isCustom !== 'object' || item.isCustom === null) {
-                        item.isCustom = {};
-                    }
-                    item.isCustom[field] = true;
-                }
-            }
-
-            const qty = parseFloat(item.qty || 1);
-            item.foreign_total_usd = (qty * parseFloat(item.foreign_price_usd || 0)).toFixed(2);
-            item.local_supply_total_bdt = (qty * parseFloat(item.local_supply_price_bdt || 0)).toFixed(2);
-            item.installation_total_bdt = (qty * parseFloat(item.installation_price_bdt || 0)).toFixed(2);
-            item.po_total_usd = (qty * parseFloat(item.po_price_usd || 0)).toFixed(2);
-
-            const updateTotalCell = (totalField, value, currency) => {
-                const cell = row.querySelector(`[data-field="${totalField}"]`);
-                if (cell) cell.textContent = parseFloat(value).toLocaleString(currency === 'USD' ? 'en-US' : 'en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            };
-            updateTotalCell('foreign_total_usd', item.foreign_total_usd, 'USD');
-            updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt, 'BDT');
-            updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
-            updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
-
-            if(field.includes('price')) {
-                const mainScroller = document.querySelector('main');
-                const scrollPos = mainScroller.scrollTop;
-
-                let selection = window.getSelection();
-                let cursorPosition = 0;
-                if (selection.rangeCount > 0) {
-                    let range = selection.getRangeAt(0);
-                    cursorPosition = range.startOffset;
-                }
-
-                renderOfferTable();
-
-                mainScroller.scrollTo({ top: scrollPos, behavior: 'instant' });
-                const newRow = offerTableBody.querySelector(`tr[data-item-index="${itemIndex}"]`);
-                if (newRow) {
-                    const newTarget = newRow.querySelector(`[data-field="${field}"]`);
-                    if (newTarget) {
-                        newTarget.focus();
-                        try {
-                            let newRange = document.createRange();
-                            let newSelection = window.getSelection();
-                            if (newTarget.childNodes.length > 0) {
-                                let newCursorPosition = Math.min(cursorPosition, newTarget.childNodes[0].length);
-                                newRange.setStart(newTarget.childNodes[0], newCursorPosition);
-                                newRange.collapse(true);
-                                newSelection.removeAllRanges();
-                                newSelection.addRange(newRange);
-                            }
-                        } catch (err) {
-                            console.warn("Could not restore cursor position.", err);
-                        }
-                    }
-                }
-            }
-
-            updateFinancialSummary();
-            if(field === 'make') {
-                renderFinancialSummaryUI();
-            }
-            captureState();
-        }
-    });
-
-    offerTableBody.addEventListener('click', async (e) => {
-        const button = e.target.closest('button');
-        if (!button) return;
-
-        const row = button.closest('tr');
-        if (!row) return;
-
-        const itemIndex = parseInt(row.dataset.itemIndex, 10);
-
-        if (button.classList.contains('save-price-to-master-btn')) {
-            if (currentUser.role !== 'admin') return;
-            const itemData = { ...button.dataset };
-            const confirmed = await showConfirmModal(
-                `Are you sure you want to update the master price for <strong>${itemData.itemCode || 'this custom item'}</strong>?<br>New Price: <strong>${itemData.priceValue}</strong>`,
-                'Update Master Price List',
-                'bg-green-600 hover:bg-green-700',
-                'Confirm Update'
-            );
-            if (!confirmed) return;
-            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            try {
-                const response = await fetch(`${API_URL}/update_master_price`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...itemData, adminEmail: currentUser.email })
-                });
-                const result = await response.json();
-                showToast(result.message, !result.success);
-                if (result.success) {
-                    if (typeof offerItems[itemIndex].isCustom === 'object') {
-                        delete offerItems[itemIndex].isCustom[itemData.priceType + '_bdt'];
-                    }
-                    renderOfferTable();
-                    captureState();
-                } else {
-                     button.innerHTML = '<i class="fas fa-save"></i>';
-                }
-            } catch (err) {
-                showToast(`An error occurred: ${err.message}`, true);
-                button.innerHTML = '<i class="fas fa-save"></i>';
-            }
-        } else if (button.classList.contains('remove-item-btn')) {
-            offerItems.splice(itemIndex, 1);
-        } else if (button.classList.contains('add-row-after-btn')) {
-            const newItem = {
-                customId: `custom_${Date.now()}`, description: '', qty: 1, unit: 'Pcs',
-                foreign_price_usd: '0.00', foreign_total_usd: '0.00',
-                local_supply_price_bdt: '0.00', local_supply_total_bdt: '0.00',
-                installation_price_bdt: '0.00', installation_total_bdt: '0.00',
-                isCustom: {}, source_type: 'local', make: 'MISC'
-            };
-            offerItems.splice(itemIndex + 1, 0, newItem);
-        }
-
-        if (!button.classList.contains('save-price-to-master-btn')) {
-            renderOfferTable();
-            renderOfferCategoryCheckboxes();
-            updateActionButtons();
-            captureState();
-        }
-    });
-
-    // Drag and Drop Listeners
-    offerTableBody.addEventListener('dragstart', (e) => {
-        const handle = e.target.closest('.move-handle');
-        if (handle) {
-            const row = handle.closest('tr');
-            draggedItemIndex = parseInt(row.dataset.itemIndex, 10);
-            e.dataTransfer.effectAllowed = 'move';
-            row.classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
-        } else {
-            e.preventDefault();
-        }
-    });
-
-    offerTableBody.addEventListener('dragover', (e) => {
-        e.preventDefault();
-    });
-
-    offerTableBody.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const targetRow = e.target.closest('tr');
-        if (targetRow && draggedItemIndex !== null) {
-            const targetIndex = parseInt(targetRow.dataset.itemIndex, 10);
-            const draggedItem = offerItems.splice(draggedItemIndex, 1)[0];
-            offerItems.splice(targetIndex, 0, draggedItem);
-            currentSortOrder = 'custom';
-            setupSortDropdown();
-            renderOfferTable();
-            captureState();
-        }
-    });
-
-    offerTableBody.addEventListener('dragend', (e) => {
-        const draggedRow = offerTableBody.querySelector('.bg-yellow-200');
-        if (draggedRow) {
-            draggedRow.classList.remove('bg-yellow-200', 'dark:bg-yellow-800/50');
-        }
-        draggedItemIndex = null;
-    });
-
 
     if (autoFillBtn) {
         autoFillBtn.addEventListener('click', async () => {
