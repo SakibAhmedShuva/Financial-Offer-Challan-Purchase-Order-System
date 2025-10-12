@@ -459,3 +459,40 @@
 .dark .filter-option label {
     color: #e2e8f0; /* slate-200 */
 }
+
+/* --- NEW: Styles for jspreadsheet --- */
+.jexcel {
+    border: none !important;
+}
+.jexcel_content {
+    border: none !important;
+}
+.jexcel > thead > tr > td {
+    background-color: #f1f5f9; /* slate-100 */
+    border-color: #e2e8f0; /* slate-200 */
+    font-weight: 600;
+    color: #334155; /* slate-700 */
+}
+.dark .jexcel > thead > tr > td {
+    background-color: #334155; /* slate-700 */
+    border-color: #475569; /* slate-600 */
+    color: #e2e8f0; /* slate-200 */
+}
+.jexcel > tbody > tr > td {
+    border-color: #e2e8f0; /* slate-200 */
+    background-color: white;
+}
+.dark .jexcel > tbody > tr > td {
+    border-color: #475569; /* slate-600 */
+    background-color: #1e293b; /* slate-800 */
+    color: #cbd5e1; /* slate-300 */
+}
+.jexcel .highlight {
+    background-color: #e0f2fe !important; /* sky-100 */
+}
+.dark .jexcel .highlight {
+    background-color: #0c4a6e !important; /* sky-900 */
+}
+.jexcel .editor {
+    box-shadow: 0 0 0 2px #0ea5e9; /* sky-500 */
+}
