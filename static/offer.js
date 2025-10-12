@@ -896,11 +896,15 @@ const getDefaultFinancialLabels = () => ({
         const hasItems = offerItems.length > 0;
         financialsSection.classList.toggle('hidden', !hasItems);
         tablePlaceholder.style.display = hasItems ? 'none' : 'block';
+        spreadsheetContainer.style.display = hasItems ? 'block' : 'none'; // Explicitly hide/show the container
         offerTableActions.style.display = 'block';
 
         if (!hasItems) {
+            if (spreadsheet) {
+                spreadsheet.destroy();
+                spreadsheet = null;
+            }
             spreadsheetContainer.innerHTML = '';
-            spreadsheet = null;
             renderFinancialSummaryUI();
             suggestCovers();
             return;
@@ -908,32 +912,19 @@ const getDefaultFinancialLabels = () => ({
 
         sortOfferItems();
 
-        const data = offerItems.map((item, index) => {
-            return [
-                index + 1,
-                item.description || '',
-                item.qty || 1,
-                item.unit || 'Pcs',
-                item.foreign_price_usd || 0,
-                `=C${index + 1}*E${index + 1}`,
-                item.po_price_usd || 0,
-                `=C${index + 1}*G${index + 1}`,
-                item.local_supply_price_bdt || 0,
-                `=C${index + 1}*I${index + 1}`,
-                item.installation_price_bdt || 0,
-                `=C${index + 1}*K${index + 1}`,
-                item.make || 'MISC',
-                // Hidden columns to store metadata
-                item.item_code || '',
-                item.source_type || 'custom',
-                JSON.stringify(item.isCustom || {})
-            ];
-        });
+        // --- START: CORRECTED LOGIC ---
+        const getColumnLetter = (colIndex) => { // 0-based index
+            let letter = '';
+            let temp;
+            while (colIndex >= 0) {
+                temp = colIndex % 26;
+                letter = String.fromCharCode(temp + 65) + letter;
+                colIndex = Math.floor(colIndex / 26) - 1;
+            }
+            return letter;
+        };
 
-        const nestedHeaders = [
-            { title: ' ', colspan: 4 },
-        ];
-
+        const nestedHeaders = [{ title: ' ', colspan: 4 }];
         const columns = [
             { type: 'number', title: 'SL', width: 50, readOnly: true },
             { type: 'richtext', title: 'DESCRIPTION', width: 450, wordWrap: true },
@@ -941,50 +932,86 @@ const getDefaultFinancialLabels = () => ({
             { type: 'text', title: 'UNIT', width: 100 },
         ];
         
-        // Dynamically add price columns based on visibility
-        if (visibleColumns.foreign_price) {
-            nestedHeaders.push({ title: financialLabels.foreignPrice || 'FOREIGN PRICE', colspan: 2 });
-            columns.push(
-                { type: 'numeric', title: 'PRICE (USD)', mask: '$ #,##0.00', width: 150 },
-                { type: 'numeric', title: 'TOTAL (USD)', mask: '$ #,##0.00', width: 150, readOnly: true }
-            );
-        }
-        if (currentUser.role === 'admin' && visibleColumns.po_price) {
-            nestedHeaders.push({ title: 'PO PRICE', colspan: 2 });
-            columns.push(
-                { type: 'numeric', title: 'PRICE (USD)', mask: '$ #,##0.00', width: 150 },
-                { type: 'numeric', title: 'TOTAL (USD)', mask: '$ #,##0.00', width: 150, readOnly: true }
-            );
-        }
-        if (visibleColumns.local_supply_price) {
-            nestedHeaders.push({ title: financialLabels.localPrice || 'LOCAL SUPPLY PRICE', colspan: 2 });
-            columns.push(
-                { type: 'numeric', title: 'PRICE (BDT)', mask: 'BDT #,##0.00', width: 150 },
-                { type: 'numeric', title: 'TOTAL (BDT)', mask: 'BDT #,##0.00', width: 150, readOnly: true }
-            );
-        }
-        if (visibleColumns.installation_price) {
-            nestedHeaders.push({ title: financialLabels.installationPrice || 'INSTALLATION PRICE', colspan: 2 });
-            columns.push(
-                { type: 'numeric', title: 'PRICE (BDT)', mask: 'BDT #,##0.00', width: 150 },
-                { type: 'numeric', title: 'TOTAL (BDT)', mask: 'BDT #,##0.00', width: 150, readOnly: true }
-            );
-        }
+        const priceColumnDefinitions = [
+            { id: 'foreign_price', visible: visibleColumns.foreign_price, header: financialLabels.foreignPrice || 'FOREIGN PRICE', currency: 'USD', priceKey: 'foreign_price_usd' },
+            { id: 'po_price', visible: currentUser.role === 'admin' && visibleColumns.po_price, header: 'PO PRICE', currency: 'USD', priceKey: 'po_price_usd' },
+            { id: 'local_supply_price', visible: visibleColumns.local_supply_price, header: financialLabels.localPrice || 'LOCAL SUPPLY PRICE', currency: 'BDT', priceKey: 'local_supply_price_bdt' },
+            { id: 'installation_price', visible: visibleColumns.installation_price, header: financialLabels.installationPrice || 'INSTALLATION PRICE', currency: 'BDT', priceKey: 'installation_price_bdt' }
+        ];
 
+        priceColumnDefinitions.forEach(def => {
+            if (def.visible) {
+                nestedHeaders.push({ title: def.header, colspan: 2 });
+                const mask = def.currency === 'USD' ? '$ #,##0.00' : 'BDT #,##0.00';
+                columns.push({ type: 'numeric', title: `PRICE (${def.currency})`, mask, width: 150, ... (def.id === 'installation_price' && { editor: customPriceEditor }) });
+                columns.push({ type: 'numeric', title: `TOTAL (${def.currency})`, mask, width: 150, readOnly: true });
+            }
+        });
+        
         nestedHeaders.push({ title: ' ', colspan: 1 });
-        columns.push(
-            { type: 'dropdown', title: 'CATEGORY', width: 120, source: ['FDS', 'FPS', 'FD', 'FC', 'MISC'] }
-        );
+        columns.push({ type: 'dropdown', title: 'CATEGORY', width: 120, source: ['FDS', 'FPS', 'FD', 'FC', 'MISC'] });
 
         // Hidden metadata columns
         columns.push({ type: 'text', title: 'item_code', width: 0.1 });
         columns.push({ type: 'text', title: 'source_type', width: 0.1 });
         columns.push({ type: 'text', title: 'isCustom', width: 0.1 });
+
+        const data = offerItems.map((item, index) => {
+            const rowData = [
+                index + 1,
+                item.description || '',
+                item.qty || 1,
+                item.unit || 'Pcs',
+            ];
+            
+            let currentColIndex = 4; // After SL, DESC, QTY, UNIT
+
+            priceColumnDefinitions.forEach(def => {
+                if(def.visible) {
+                    rowData.push(item[def.priceKey] || 0);
+                    const priceColLetter = getColumnLetter(currentColIndex);
+                    // Column C is always Qty (index 2)
+                    rowData.push(`=C${index + 1}*${priceColLetter}${index + 1}`);
+                    currentColIndex += 2;
+                }
+            });
+            
+            rowData.push(
+                item.make || 'MISC',
+                item.item_code || '',
+                item.source_type || 'custom',
+                JSON.stringify(item.isCustom || {})
+            );
+            return rowData;
+        });
+        // --- END: CORRECTED LOGIC ---
         
         if (spreadsheet) {
             spreadsheet.destroy();
             spreadsheet = null;
         }
+
+        const customPriceEditor = function() {
+            // Your existing editor logic here, if you have one.
+            // For now, let's just make it a standard editor.
+            var editor = document.createElement('div');
+            editor.classList.add('editor');
+        
+            editor.open = function(cell, value) {
+                editor.innerText = value || '';
+                editor.focus();
+            }
+        
+            editor.close = function() {
+                // You can add logic here if needed when the editor closes
+            }
+        
+            editor.get = function() {
+                return editor.innerText;
+            }
+            return editor;
+        };
+
 
         spreadsheet = jspreadsheet(spreadsheetContainer, {
             data: data,
@@ -1005,33 +1032,25 @@ const getDefaultFinancialLabels = () => ({
                     const [row, col, oldValue, newValue] = record;
                     const item = offerItems[row];
                     if (!item) return;
-
-                    const colName = instance.getHeader(col);
+                    
+                    const headerTitle = instance.getHeader(col);
+                    const parentHeader = instance.getHeader(col, true);
 
                     // Map column titles back to item properties
-                    if (colName === 'DESCRIPTION') item.description = newValue;
-                    if (colName === 'QTY') item.qty = parseFloat(newValue) || 1;
-                    if (colName === 'UNIT') item.unit = newValue;
-                    if (colName === 'CATEGORY') item.make = newValue;
-                    if (colName === 'PRICE (USD)') {
-                        if (visibleColumns.foreign_price && instance.getHeader(col - 1, true).includes('FOREIGN')) {
-                            item.foreign_price_usd = parseFloat(newValue) || 0;
-                            if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
-                            item.isCustom['foreign_price_usd'] = true;
-                        } else if (visibleColumns.po_price && instance.getHeader(col - 1, true).includes('PO')) {
-                            item.po_price_usd = parseFloat(newValue) || 0;
-                        }
-                    }
-                    if (colName === 'PRICE (BDT)') {
-                        if (visibleColumns.local_supply_price && instance.getHeader(col - 1, true).includes('LOCAL')) {
-                            item.local_supply_price_bdt = parseFloat(newValue) || 0;
-                            if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
-                            item.isCustom['local_supply_price_bdt'] = true;
-                        } else if (visibleColumns.installation_price && instance.getHeader(col - 1, true).includes('INSTALLATION')) {
-                            item.installation_price_bdt = parseFloat(newValue) || 0;
-                            if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
-                            item.isCustom['installation_price_bdt'] = true;
-                        }
+                    if (headerTitle === 'DESCRIPTION') item.description = newValue;
+                    else if (headerTitle === 'QTY') item.qty = parseFloat(newValue) || 1;
+                    else if (headerTitle === 'UNIT') item.unit = newValue;
+                    else if (headerTitle === 'CATEGORY') item.make = newValue;
+                    else if (headerTitle.startsWith('PRICE')) {
+                        let updated = false;
+                        priceColumnDefinitions.forEach(def => {
+                            if (def.visible && parentHeader.includes(def.header)) {
+                                item[def.priceKey] = parseFloat(newValue) || 0;
+                                if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
+                                item.isCustom[def.priceKey] = true;
+                                updated = true;
+                            }
+                        });
                     }
 
                     // Update totals in internal state
@@ -1046,11 +1065,18 @@ const getDefaultFinancialLabels = () => ({
                 renderFinancialSummaryUI();
                 captureState();
             },
-            oninsertrow: () => {
-                if(isRestoringState) return;
-                // Defer to allow jspreadsheet to complete its own logic
+            oninsertrow: (instance, rowIndex, numOfRows, isBefore) => {
+                 if(isRestoringState) return;
+                const newItem = {
+                    customId: `custom_${Date.now()}`, description: '', qty: 1, unit: 'Pcs',
+                    foreign_price_usd: 0, foreign_total_usd: 0,
+                    local_supply_price_bdt: 0, local_supply_total_bdt: 0,
+                    installation_price_bdt: 0, installation_total_bdt: 0,
+                    po_price_usd: 0, po_total_usd: 0,
+                    isCustom: {}, source_type: 'local', make: 'MISC'
+                };
+                offerItems.splice(rowIndex, 0, newItem);
                 setTimeout(() => {
-                    offerItems = spreadsheet.getData(false, true).map(row => mapRowToItem(row));
                     renderOfferTable();
                     captureState();
                 }, 50);
@@ -1082,27 +1108,18 @@ const getDefaultFinancialLabels = () => ({
         const mapRowToItem = (row) => {
             let colIndex = 0;
             const item = {};
-
+            
+            // This mapping needs to be dynamic too
             item.description = row[colIndex++] || '';
             item.qty = parseFloat(row[colIndex++]) || 1;
             item.unit = row[colIndex++] || 'Pcs';
             
-            if (visibleColumns.foreign_price) {
-                item.foreign_price_usd = parseFloat(row[colIndex++]) || 0;
-                colIndex++; // Skip total
-            }
-            if (currentUser.role === 'admin' && visibleColumns.po_price) {
-                item.po_price_usd = parseFloat(row[colIndex++]) || 0;
-                colIndex++; // Skip total
-            }
-            if (visibleColumns.local_supply_price) {
-                item.local_supply_price_bdt = parseFloat(row[colIndex++]) || 0;
-                colIndex++; // Skip total
-            }
-            if (visibleColumns.installation_price) {
-                item.installation_price_bdt = parseFloat(row[colIndex++]) || 0;
-                colIndex++; // Skip total
-            }
+            priceColumnDefinitions.forEach(def => {
+                if (def.visible) {
+                    item[def.priceKey] = parseFloat(row[colIndex++]) || 0;
+                    colIndex++; // Skip total column
+                }
+            });
             
             item.make = row[colIndex++] || 'MISC';
 
@@ -1115,7 +1132,7 @@ const getDefaultFinancialLabels = () => ({
                 item.isCustom = {};
             }
 
-            // Recalculate totals
+            // Recalculate totals to be safe
             const qty = item.qty;
             item.foreign_total_usd = (qty * (item.foreign_price_usd || 0)).toFixed(2);
             item.po_total_usd = (qty * (item.po_price_usd || 0)).toFixed(2);
