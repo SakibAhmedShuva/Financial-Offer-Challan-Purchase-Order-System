@@ -97,14 +97,15 @@
         <hr class="my-6 border-slate-200 dark:border-slate-700">
 
         <!-- THIS IS THE CORRECTED SECTION -->
+        <!-- The min-h-[200px] class gives the container a minimum height so it's visible even before data is loaded -->
         <div id="spreadsheet-container" class="border rounded-md dark:border-slate-700 min-h-[200px]"></div>
         
-        <div id="offer-table-actions" class="mt-4 hidden">
+        <div id="offer-table-actions" class="mt-4">
             <button id="add-custom-item-btn" class="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600">
                 <i class="fas fa-plus mr-2"></i>Add Custom Row
             </button>
         </div>
-        <p id="table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the offer.</p>
+        <div id="table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the offer.</div>
         <!-- END OF CORRECTED SECTION -->
 
         <div id="financials-section" class="mt-6 hidden">
