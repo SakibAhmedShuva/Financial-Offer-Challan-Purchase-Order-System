@@ -460,69 +460,39 @@
     color: #e2e8f0; /* slate-200 */
 }
 
-/* --- NEW: Sheet Tab Styles --- */
-.sheet-tab {
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    cursor: pointer;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -2px; /* Overlaps the container's bottom border */
-    transition: all 0.2s ease-in-out;
-    max-width: 200px;
+/* --- NEW: Styles for jspreadsheet --- */
+.jexcel {
+    border: none !important;
 }
-.sheet-tab:hover {
+.jexcel_content {
+    border: none !important;
+}
+.jexcel > thead > tr > td {
     background-color: #f1f5f9; /* slate-100 */
-}
-.dark .sheet-tab:hover {
-    background-color: #334155; /* slate-700 */
-}
-.sheet-tab.active {
-    border-bottom-color: #0ea5e9; /* sky-500 */
+    border-color: #e2e8f0; /* slate-200 */
     font-weight: 600;
-    color: #0c4a6e; /* sky-900 */
+    color: #334155; /* slate-700 */
 }
-.dark .sheet-tab.active {
-    color: #e0f2fe; /* sky-100 */
+.dark .jexcel > thead > tr > td {
+    background-color: #334155; /* slate-700 */
+    border-color: #475569; /* slate-600 */
+    color: #e2e8f0; /* slate-200 */
 }
-
-.sheet-tab-name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding: 2px;
-    border-radius: 3px;
-    outline: none;
+.jexcel > tbody > tr > td {
+    border-color: #e2e8f0; /* slate-200 */
+    background-color: white;
 }
-.sheet-tab-name:focus {
-    box-shadow: inset 0 0 0 2px #38bdf8; /* sky-400 */
-    background-color: #f0f9ff; /* sky-50 */
+.dark .jexcel > tbody > tr > td {
+    border-color: #475569; /* slate-600 */
+    background-color: #1e293b; /* slate-800 */
+    color: #cbd5e1; /* slate-300 */
 }
-.dark .sheet-tab-name:focus {
-    background-color: #0c4a6e; /* sky-900 */
+.jexcel .highlight {
+    background-color: #e0f2fe !important; /* sky-100 */
 }
-
-.delete-sheet-btn {
-    margin-left: 8px;
-    padding: 4px;
-    border-radius: 50%;
-    line-height: 1;
-    color: #94a3b8; /* slate-400 */
-    opacity: 0.5;
-    transition: all 0.2s;
+.dark .jexcel .highlight {
+    background-color: #0c4a6e !important; /* sky-900 */
 }
-.sheet-tab:hover .delete-sheet-btn {
-    opacity: 1;
+.jexcel .editor {
+    box-shadow: 0 0 0 2px #0ea5e9; /* sky-500 */
 }
-.delete-sheet-btn:hover {
-    color: #ef4444; /* red-500 */
-    background-color: #fee2e2; /* red-100 */
-}
-.dark .delete-sheet-btn:hover {
-    background-color: #7f1d1d; /* red-900 */
-}
-
-#add-new-sheet-btn {
-    border-radius: 5px;
-}
-/* --- END: Sheet Tab Styles --- */

@@ -12,6 +12,13 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/style.css">
 
+    <!-- New Spreadsheet Library Links -->
+    <script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@8.9.0/dist/jspreadsheet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsuites@5.8.0/dist/jsuites.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@8.9.0/dist/jspreadsheet.css" type="text/css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsuites@5.8.0/dist/jsuites.css" type="text/css" />
+    <!-- End of New Links -->
+
     <script>
         if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
@@ -241,10 +248,7 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="/static/search_result.js"></script>
     <script src="/static/name_controller.js"></script>
-
-    <script src="/static/offer_manager.js"></script>
-    <script src="/static/offer_ui_controller.js"></script>
-    
+    <script src="/static/offer.js"></script>
     <script src="/static/challan.js"></script>
     <script src="/static/ai-helper.js"></script>
     <script src="/static/purchase-order.js"></script>

@@ -96,19 +96,17 @@
 
         <hr class="my-6 border-slate-200 dark:border-slate-700">
 
-        <div id="offer-sheet-tabs-container" class="flex items-center border-b border-slate-200 dark:border-slate-700 mb-2">
-            <button id="add-new-sheet-btn" class="px-3 py-2 text-slate-400 hover:text-sky-500 transition-colors" title="Add New Sheet">
-                <i class="fas fa-plus"></i>
+        <!-- THIS IS THE CORRECTED SECTION -->
+        <!-- The min-h-[200px] class gives the container a minimum height so it's visible even before data is loaded -->
+        <div id="spreadsheet-container" class="border rounded-md dark:border-slate-700 min-h-[200px]"></div>
+        
+        <div id="offer-table-actions" class="mt-4">
+            <button id="add-custom-item-btn" class="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600">
+                <i class="fas fa-plus mr-2"></i>Add Custom Row
             </button>
         </div>
-        <div id="description-toolbar">
-            <button id="desc-bold-btn" title="Bold"><i class="fas fa-bold"></i></button>
-            <button id="desc-italic-btn" title="Italic"><i class="fas fa-italic"></i></button>
-            <input type="color" id="desc-color-btn" title="Text Color">
-        </div>
-        <div class="overflow-x-auto border-t border-b border-slate-200 dark:border-slate-700"><table class="w-full text-left"><thead id="offer-table-head"></thead><tbody id="offer-table-body"></tbody></table></div>
-        <div id="offer-table-actions" class="mt-4 hidden"><button id="add-custom-item-btn" class="px-4 py-2 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600"><i class="fas fa-plus mr-2"></i>Add Custom Item</button></div>
-        <p id="table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the offer.</p>
+        <div id="table-placeholder" class="text-center text-slate-500 dark:text-slate-400 py-12">Search for items to add them to the offer.</div>
+        <!-- END OF CORRECTED SECTION -->
 
         <div id="financials-section" class="mt-6 hidden">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -240,7 +238,7 @@
             </div>
         </div>
     </div>
-
+    
     <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-md mb-6">
          <h3 class="font-semibold text-lg mb-4 text-slate-800 dark:text-white flex items-center"><i class="fas fa-file-contract mr-3 text-sky-500"></i>Terms & Conditions</h3>
         <div class="flex items-center flex-wrap gap-x-6 gap-y-2 mb-4">

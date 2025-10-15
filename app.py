@@ -298,7 +298,8 @@ def update_excel_price(filepath, sheet_name, item_code, price_data):
         return (False, f"Error updating Excel file: {e}")
 
 # --- Export Functions ---
-# --- REVISED: export_file function updated for multi-sheet logic ---
+# --- START OF CORRECTION ---
+# This entire function is replaced with the corrected logic.
 def export_file(file_type, data):
     user_info = data.get('user', {})
     filename_with_ext = data.get('filename', f"FinancialOffer_NoRef.{file_type}")
@@ -308,19 +309,12 @@ def export_file(file_type, data):
 
     buffer = io.BytesIO()
 
-    # --- REVISED: Handle 'sheets' array and aggregate items for summary ---
-    sheets = data.get('sheets', [])
-    # For backward compatibility with old projects that have 'items' instead of 'sheets'
-    if not sheets and 'items' in data:
-        sheets = [{'name': 'Bill of Quantities', 'items': data.get('items', [])}]
-        data['sheets'] = sheets
-        
-    all_items_for_summary = [item for sheet in sheets for item in sheet.get('items', [])]
-
+    items = data.get('items', [])
     financials = data.get('financials', {})
     visible_columns = data.get('visibleColumns', {})
     summary_scopes = data.get('summaryScopes', {})
 
+    # --- FIX START: Correctly and robustly define has_additional_charges ---
     has_freight = financials.get('use_freight') and safe_float(financials.get('freight_foreign_usd')) > 0
     has_delivery = financials.get('use_delivery') and safe_float(financials.get('delivery_local_bdt')) > 0
     has_vat = financials.get('use_vat') and safe_float(financials.get('vat_local_bdt')) > 0
@@ -337,24 +331,25 @@ def export_file(file_type, data):
         has_freight or has_delivery or has_vat or has_ait or has_discount or 
         has_total_in_bdt or has_customs_duty
     )
+    # --- FIX END ---
 
-    has_foreign_part = visible_columns.get('foreign_price', True) and any(safe_float(item.get('foreign_total_usd')) > 0 for item in all_items_for_summary)
-    has_local_supply_part = visible_columns.get('local_supply_price') and any(safe_float(item.get('local_supply_total_bdt')) > 0 for item in all_items_for_summary)
-    has_install_part = visible_columns.get('installation_price') and any(safe_float(item.get('installation_total_bdt')) > 0 for item in all_items_for_summary)
+    has_foreign_part = visible_columns.get('foreign_price', True) and any(safe_float(item.get('foreign_total_usd')) > 0 for item in items)
+    has_local_supply_part = visible_columns.get('local_supply_price') and any(safe_float(item.get('local_supply_total_bdt')) > 0 for item in items)
+    has_install_part = visible_columns.get('installation_price') and any(safe_float(item.get('installation_total_bdt')) > 0 for item in items)
 
     data['has_foreign_part'] = has_foreign_part
     data['has_local_part'] = has_local_supply_part or has_install_part
 
     # Calculate USD Total
-    sub_total_usd = sum(safe_float(item.get('foreign_total_usd', 0)) for item in all_items_for_summary)
+    sub_total_usd = sum(safe_float(item.get('foreign_total_usd', 0)) for item in items)
     freight_usd = safe_float(financials.get('freight_foreign_usd', 0)) if financials.get('use_freight') else 0
     discount_usd = safe_float(financials.get('discount_foreign_usd', 0)) if financials.get('use_discount_foreign') else 0
     grand_total_usd = sub_total_usd + freight_usd - discount_usd
     data['grand_total_usd'] = grand_total_usd
 
     # Calculate BDT Total from Local/Installation parts
-    sub_total_local_bdt = sum(safe_float(item.get('local_supply_total_bdt', 0)) for item in all_items_for_summary)
-    sub_total_install_bdt = sum(safe_float(item.get('installation_total_bdt', 0)) for item in all_items_for_summary)
+    sub_total_local_bdt = sum(safe_float(item.get('local_supply_total_bdt', 0)) for item in items)
+    sub_total_install_bdt = sum(safe_float(item.get('installation_total_bdt', 0)) for item in items)
     delivery_bdt = safe_float(financials.get('delivery_local_bdt', 0)) if financials.get('use_delivery') else 0
     vat_bdt = safe_float(financials.get('vat_local_bdt', 0)) if financials.get('use_vat') else 0
     ait_bdt = safe_float(financials.get('ait_local_bdt', 0)) if financials.get('use_ait') else 0
@@ -380,7 +375,6 @@ def export_file(file_type, data):
     else:
         data['words_usd'] = to_words_usd(grand_total_usd) if data['has_foreign_part'] else ""
         data['words_bdt'] = to_words_bdt(local_parts_total_bdt) if data['has_local_part'] else ""
-    # --- END REVISION ---
 
     if file_type == 'pdf':
         pdf_bytes = pdf_gen.generate_financial_offer_pdf(data, CONFIG['AUTH_DIR'], CONFIG['HEADER_COLOR_HEX'])
@@ -429,6 +423,7 @@ def export_file(file_type, data):
     log_activity(user_info.get('name', 'Unknown'), log_name, filename_with_ext, project_id)
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=filename_with_ext, mimetype=mimetype)
+# --- END OF CORRECTION ---
 
 
 def generate_po_file(file_type, po_data):
@@ -802,17 +797,13 @@ def save_project():
     data = request.json
 
     # --- NEW SANITIZATION STEP ---
-    # --- REVISED: Sanitize descriptions within sheets ---
-    sheets_to_save = data.get('sheets')
-    if sheets_to_save:
-        for sheet in sheets_to_save:
-            items_to_save = sheet.get('items')
-            if items_to_save:
-                for item in items_to_save:
-                    if 'description' in item and item['description']:
-                        item['description'] = sanitize_dirty_html(item['description'])
-        data['sheets'] = sheets_to_save
-    # --- END OF REVISION ---
+    items_to_save = data.get('items')
+    if items_to_save:
+        for item in items_to_save:
+            if 'description' in item and item['description']:
+                item['description'] = sanitize_dirty_html(item['description'])
+        data['items'] = items_to_save
+    # --- END OF SANITIZATION STEP ---
 
     is_new_project = not data.get('projectId')
     project_id = data.get('projectId') or str(uuid.uuid4())
@@ -840,16 +831,15 @@ def save_project():
         'status': existing_status,
         'owner_email': original_owner_email, # BUG FIX: Use original owner
         'projectType': project_type,
+        'items': data.get('items'),
         'client': data.get('client', {}),
     }
 
     if project_type in ['offer', 'po', 'challan']:
         project_data['categories'] = data.get('categories', [])
 
-    # --- REVISED: Save 'sheets' instead of 'items' for offers ---
     if project_type == 'offer':
         project_data.update({
-            'sheets': data.get('sheets', []), # <-- REVISED
             'financials': data.get('financials', {}),
             'financialLabels': data.get('financialLabels', {}),
             'selected_cover': data.get('selected_cover'),
@@ -861,17 +851,14 @@ def save_project():
         })
     elif project_type == 'po':
          project_data.update({
-            'items': data.get('items', []), # PO remains single-list
             'financials': data.get('financials', {}),
             'termsAndConditions': data.get('termsAndConditions'),
             'originalOfferRef': data.get('originalOfferRef')
         })
     elif project_type == 'challan':
          project_data.update({
-            'items': data.get('items', []), # Challan remains single-list
             'includeSignature': data.get('includeSignature', True)
         })
-    # --- END REVISION ---
     elif project_type == 'ai_helper':
         project_data['selections'] = data.get('selections')
         project_data['matchSources'] = data.get('matchSources', {})
@@ -896,11 +883,15 @@ def save_project():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# --- REVISED: /projects endpoint to handle sheets structure ---
+# app.py
+
+# app.py
+
 @app.route('/projects', methods=['GET'])
 def get_projects():
     user_email = request.args.get('email')
     search_term = request.args.get('search', '').lower()
+    # user_role is not needed here anymore for filtering, but kept in case other logic depends on it
     user_role = request.args.get('role')
     projects = []
 
@@ -912,6 +903,8 @@ def get_projects():
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
+            # BUG FIX: Only show projects owned by the current user in "My Projects"
+            # Admins should not see other users' projects in this specific list.
             if data.get('owner_email') != user_email:
                 continue
 
@@ -920,16 +913,9 @@ def get_projects():
             client_name_display = data.get('client', {}).get('name', 'N/A')
             product_types_display = []
 
-            # --- REVISED: Get product types from within sheets or items ---
-            items_to_check = []
-            if 'sheets' in data and data['sheets']:
-                items_to_check = [item for sheet in data['sheets'] for item in sheet.get('items', [])]
-            elif 'items' in data: # Backward compatibility
-                items_to_check = data.get('items', [])
-
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
-                all_cats = set(i.get('make') for i in items_to_check)
+                all_cats = set(i.get('make') for i in data.get('items', []))
                 cats = sorted([str(c) for c in all_cats if c])
                 cats_part = '_'.join(cats) if cats else 'MISC'
                 abbreviation = ''.join(word[0]for word in client_name.split()).upper()
@@ -942,9 +928,8 @@ def get_projects():
                 client_name_display = "N/A"
                 product_types_display = ["AI Processed"]
             else:
-                all_product_types = set(i.get('product_type', 'N/A') for i in items_to_check)
+                all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
                 product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
-            # --- END REVISION ---
 
             if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
                 continue
@@ -969,7 +954,7 @@ def get_projects():
 
     return jsonify(projects)
 
-# --- REVISED: /all_projects_for_admin endpoint to handle sheets structure ---
+# FIX: New dedicated endpoint for the admin Activity Log to fetch ALL projects
 @app.route('/all_projects_for_admin', methods=['GET'])
 def get_all_projects_for_admin():
     user_email = request.args.get('email')
@@ -988,21 +973,16 @@ def get_all_projects_for_admin():
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
+            # This endpoint intentionally does NOT filter by owner_email
+
             project_type = data.get('projectType', 'offer')
             reference_number_display = data.get('referenceNumber', 'N/A')
             client_name_display = data.get('client', {}).get('name', 'N/A')
             product_types_display = []
 
-            # --- REVISED: Get product types from within sheets or items ---
-            items_to_check = []
-            if 'sheets' in data and data['sheets']:
-                items_to_check = [item for sheet in data['sheets'] for item in sheet.get('items', [])]
-            elif 'items' in data: # Backward compatibility
-                items_to_check = data.get('items', [])
-
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
-                all_cats = set(i.get('make') for i in items_to_check)
+                all_cats = set(i.get('make') for i in data.get('items', []))
                 cats = sorted([str(c) for c in all_cats if c])
                 cats_part = '_'.join(cats) if cats else 'MISC'
                 abbreviation = ''.join(word[0]for word in client_name.split()).upper()
@@ -1015,9 +995,8 @@ def get_all_projects_for_admin():
                 client_name_display = "N/A"
                 product_types_display = ["AI Processed"]
             else:
-                all_product_types = set(i.get('product_type', 'N/A') for i in items_to_check)
+                all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
                 product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
-            # --- END REVISION ---
 
             if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
                 continue

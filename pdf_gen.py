@@ -239,7 +239,9 @@ def add_tnc_to_pdf(pdf, tnc_text):
             pdf.set_font('Arial', '', 9)
             pdf.multi_cell(0, 4, sanitized_line, 0, 'L', ln=1)
 
-def draw_boq_content(pdf, data, items, sections, visible_price_groups):
+def draw_boq_content(pdf, data, sections, visible_price_groups):
+    items = data.get('items', [])
+    
     all_prices_visible = len(visible_price_groups) >= 3 
     header_font_size, boq_font_size = 8, 9
     if all_prices_visible:
@@ -337,8 +339,9 @@ def draw_boq_content(pdf, data, items, sections, visible_price_groups):
 
         pdf.set_y(start_y + row_height)
 
-def draw_financial_summary_rows_for_boq(pdf, data, items, sections, visible_price_groups, financial_labels, is_local_only=False):
-    financials = data.get('financials', {})
+
+def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only=False):
+    financials, items = data.get('financials', {}), data.get('items', [])
     has_additional_charges = data.get('has_additional_charges', False)
     
     label_span_width = sum(c['width'] for c in sections['base'])
@@ -520,12 +523,6 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     available_width = pdf.w - pdf.l_margin - pdf.r_margin
     sections['base'][1]['width'] = available_width - non_desc_width
     
-    sheets = data.get('sheets', [])
-    if not sheets and 'items' in data: # Backward compatibility
-        sheets = [{'name': 'Bill of Quantities', 'items': data.get('items', [])}]
-    
-    all_items = [item for sheet in sheets for item in sheet.get('items', [])]
-    
     is_summary_enabled = data.get('isSummaryPageEnabled', False)
     
     if is_summary_enabled:
@@ -689,22 +686,11 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
                          "at the time of shipment.")
             pdf.multi_cell(0, 5, note_text, 0, 'L')
         
-        # --- Loop through sheets to create individual BOQs ---
-        for i, sheet_data in enumerate(sheets):
-            sheet_name = sheet_data.get('name', f'Sheet {i+1}')
-            sheet_items = sheet_data.get('items', [])
-            if not sheet_items: continue
-
-            pdf.is_summary_page = False
-            pdf.set_doc_title(f"Bill of Quantities") # Keep header simple
-            pdf.add_page()
-            
-            # Add a sub-header for the specific sheet
-            pdf.set_font('Arial', 'BU', 12)
-            pdf.cell(0, 8, sheet_name, 0, 1, 'C')
-            pdf.ln(2)
-
-            draw_boq_content(pdf, data, sheet_items, sections, visible_price_groups)
+        pdf.is_summary_page = False
+        pdf.set_doc_title("Bill of Quantities")
+        pdf.add_page()
+        draw_boq_content(pdf, data, sections, visible_price_groups)
+        draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only)
     
     else:
         # --- CLASSIC BOQ LAYOUT ---
@@ -735,24 +721,10 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
         pdf.cell(label_width, 7, "Address:", 0, 0, 'L')
         pdf.set_font('Arial', '', 11)
         pdf.multi_cell(value_width, 7, sanitized_client_address, 0, 'L', ln=1)
-        pdf.ln(5)
+        pdf.ln(10)
         
-        # --- REVISED: Loop to draw each BOQ as a separate section ---
-        for i, sheet_data in enumerate(sheets):
-            sheet_name = sheet_data.get('name', f'Sheet {i+1}')
-            sheet_items = sheet_data.get('items', [])
-            if not sheet_items: continue
-            
-            # Add a sub-header for the specific sheet
-            pdf.set_font('Arial', 'BU', 12)
-            pdf.cell(0, 8, sheet_name, 0, 1, 'L')
-            pdf.ln(2)
-            
-            draw_boq_content(pdf, data, sheet_items, sections, visible_price_groups)
-            pdf.ln(5) # Add space between BOQ sections
-        
-        # --- CONSOLIDATED summary, notes, and in-words text at the end ---
-        draw_financial_summary_rows_for_boq(pdf, data, all_items, sections, visible_price_groups, financial_labels, is_local_only)
+        draw_boq_content(pdf, data, sections, visible_price_groups)
+        draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only)
         
         if words_usd_text or words_bdt_text:
             pdf.ln(5)
@@ -767,18 +739,19 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
             in_words_text_bdt = f"In Words (Local Part):   {sanitize_text(words_bdt_text)}"
             pdf.cell(0, 8, in_words_text_bdt, 1, 1, 'C', fill=True)
         
-        if data.get('has_foreign_part') and freight > 0:
-            pdf.ln(5)
-            pdf.set_font('Arial', 'B', 10)
-            pdf.set_fill_color(238, 229, 118)
-            pdf.cell(0, 8, "Important Note:", 0, 1, 'C', fill=True)
-            pdf.set_font('Arial', '', 10)
-            note_text = (f"Freight Charge (USD {freight:,.2f}) has been considered in light of the current market trending price, "
+        if data.get('has_foreign_part'):
+            if freight > 0:
+                pdf.ln(5)
+                pdf.set_font('Arial', 'B', 10)
+                pdf.set_fill_color(238, 229, 118)
+                pdf.cell(0, 8, "Important Note:", 0, 1, 'C', fill=True)
+                pdf.set_font('Arial', '', 10)
+                note_text = (f"Freight Charge (USD {freight:,.2f}) has been considered in light of the current market trending price, "
                             "applicable for the Sea Freight. Any increase in the freight charge will have to be borne by the client, "
                             "at the time of shipment.")
-            pdf.multi_cell(0, 5, sanitize_text(note_text), 0, 'L')
+                pdf.multi_cell(0, 5, sanitize_text(note_text), 0, 'L')
 
-    # --- T&C and Signature are added once at the end of the document ---
+
     add_tnc_to_pdf(pdf, data.get('terms_and_conditions', ''))
     
     pdf.set_auto_page_break(False)
