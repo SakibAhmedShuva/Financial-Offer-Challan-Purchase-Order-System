@@ -460,39 +460,72 @@
     color: #e2e8f0; /* slate-200 */
 }
 
-/* --- NEW: Styles for jspreadsheet --- */
-.jexcel {
-    border: none !important;
+/* NEW: Styles for sheet tabs */
+.offer-sheet-tab {
+    padding: 8px 16px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-bottom: none;
+    margin-bottom: -1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    color: #475569; /* slate-600 */
 }
-.jexcel_content {
-    border: none !important;
+.dark .offer-sheet-tab {
+    color: #94a3b8; /* slate-400 */
 }
-.jexcel > thead > tr > td {
-    background-color: #f1f5f9; /* slate-100 */
+
+.offer-sheet-tab.active {
     border-color: #e2e8f0; /* slate-200 */
-    font-weight: 600;
-    color: #334155; /* slate-700 */
+    background-color: #ffffff; /* white */
+    border-top-left-radius: 0.375rem;
+    border-top-right-radius: 0.375rem;
+    color: #0ea5e9; /* sky-500 */
 }
-.dark .jexcel > thead > tr > td {
-    background-color: #334155; /* slate-700 */
-    border-color: #475569; /* slate-600 */
-    color: #e2e8f0; /* slate-200 */
-}
-.jexcel > tbody > tr > td {
-    border-color: #e2e8f0; /* slate-200 */
-    background-color: white;
-}
-.dark .jexcel > tbody > tr > td {
-    border-color: #475569; /* slate-600 */
+.dark .offer-sheet-tab.active {
+    border-color: #334155; /* slate-700 */
     background-color: #1e293b; /* slate-800 */
+}
+
+.sheet-delete-btn {
+    color: #94a3b8; /* slate-400 */
+    font-size: 14px;
+    line-height: 1;
+    border-radius: 999px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+.sheet-delete-btn:hover {
+    color: #ef4444; /* red-500 */
+    background-color: #fee2e2; /* red-100 */
+}
+.dark .sheet-delete-btn:hover {
+    background-color: #450a0a; /* red-900/50 */
+}
+
+#add-sheet-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background-color: #e2e8f0; /* slate-200 */
+    color: #475569; /* slate-600 */
+    font-weight: bold;
+    margin-left: 8px;
+    margin-bottom: 4px;
+}
+.dark #add-sheet-btn {
+    background-color: #334155; /* slate-700 */
     color: #cbd5e1; /* slate-300 */
 }
-.jexcel .highlight {
-    background-color: #e0f2fe !important; /* sky-100 */
+#add-sheet-btn:hover {
+    background-color: #cbd5e1; /* slate-300 */
 }
-.dark .jexcel .highlight {
-    background-color: #0c4a6e !important; /* sky-900 */
-}
-.jexcel .editor {
-    box-shadow: 0 0 0 2px #0ea5e9; /* sky-500 */
+.dark #add-sheet-btn:hover {
+    background-color: #475569; /* slate-600 */
 }
