@@ -3,7 +3,7 @@ function initializeOfferModule(deps) {
     const { API_URL, currentUser, showToast, updateProjectState, saveAsModal, setDirty, getDirty, showConfirmModal } = deps;
 
     // --- STATE ---
-    let selectedClient = null, offerItems = [], itemSearchTimeout, currentProjectId = null, currentReferenceNumber = null;
+    let selectedClient = null, sheets = [], activeSheetIndex = 0, itemSearchTimeout, currentProjectId = null, currentReferenceNumber = null;
     let selectedCover = null;
     let isSummaryPageEnabled = true;
     let summaryScopeDescriptions = {};
@@ -16,7 +16,6 @@ function initializeOfferModule(deps) {
     let activeKeydownHandler = null;
     let draggedItemIndex = null; // For drag and drop
     let offerConfig = { bdt_conversion_rate: 125, customs_duty_percentage: 0.16 };
-    let spreadsheet = null; // To hold the jspreadsheet instance
 
     // --- NEW EXCEL-LIKE STATE ---
     let activeCell = { row: -1, col: -1 };
@@ -102,11 +101,11 @@ const getDefaultFinancialLabels = () => ({
     let captureTimeout;
 
     // --- DOM ELEMENTS ---
-    const spreadsheetContainer = document.getElementById('spreadsheet-container'); // NEW
     const newOfferBtn = document.getElementById('new-offer-btn');
     const clientSearchInput = document.getElementById('client-search-input'), clientSearchResults = document.getElementById('client-search-results'), selectedClientInfo = document.getElementById('selected-client-info');
     const itemSearchInput = document.getElementById('item-search-input'), itemSearchResults = document.getElementById('item-search-results'), itemSearchLoader = document.getElementById('item-search-loader');
-    const tablePlaceholder = document.getElementById('table-placeholder');
+    const offerSheetTabs = document.getElementById('offer-sheet-tabs');
+    const offerTableHead = document.getElementById('offer-table-head'), offerTableBody = document.getElementById('offer-table-body'), tablePlaceholder = document.getElementById('table-placeholder');
     const offerCategoryCheckboxes = document.getElementById('offer-category-checkboxes');
     const saveProjectBtn = document.getElementById('save-project-btn'), saveAsBtn = document.getElementById('save-as-btn'), exportPdfBtn = document.getElementById('export-pdf-btn'), exportXlsxBtn = document.getElementById('export-xlsx-btn');
     const financialsSection = document.getElementById('financials-section'), offerTableActions = document.getElementById('offer-table-actions');
@@ -310,7 +309,8 @@ const getDefaultFinancialLabels = () => ({
         captureTimeout = setTimeout(() => {
             const state = {
                 selectedClient: JSON.parse(JSON.stringify(selectedClient)),
-                offerItems: JSON.parse(JSON.stringify(offerItems)),
+                sheets: JSON.parse(JSON.stringify(sheets)),
+                activeSheetIndex,
                 financials: JSON.parse(JSON.stringify(financials)),
                 financialLabels: JSON.parse(JSON.stringify(financialLabels)),
                 visibleColumns: JSON.parse(JSON.stringify(visibleColumns)),
@@ -363,7 +363,8 @@ const getDefaultFinancialLabels = () => ({
         isRestoringState = true;
 
         selectedClient = state.selectedClient;
-        offerItems = state.offerItems;
+        sheets = state.sheets;
+        activeSheetIndex = state.activeSheetIndex;
         financials = state.financials;
         financialLabels = state.financialLabels || getDefaultFinancialLabels();
         visibleColumns = state.visibleColumns;
@@ -409,6 +410,7 @@ const getDefaultFinancialLabels = () => ({
 
         renderFinancialSummaryUI();
         setupFinancialsUI();
+        renderSheetTabs();
         renderOfferTable();
         renderSelectedCover();
         updateActionButtons();
@@ -476,13 +478,14 @@ const getDefaultFinancialLabels = () => ({
         }
         financialSummaryContainer.style.display = 'block';
 
-        if (offerItems.length === 0) {
+        const allItems = sheets.flatMap(sheet => sheet.items);
+        if (allItems.length === 0) {
             financialSummaryContainer.innerHTML = '<p class="text-center text-slate-500 dark:text-slate-400 py-8">Add items to the offer to see the financial summary.</p>';
             return;
         }
 
         const scopes = {};
-        offerItems.forEach(item => {
+        allItems.forEach(item => {
             const type = item.make || 'MISC';
             const foreignValue = parseFloat(item.foreign_total_usd || 0);
             const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
@@ -714,7 +717,9 @@ const getDefaultFinancialLabels = () => ({
     };
 
     const sortOfferItems = () => {
-        const indexedItems = offerItems.map((item, index) => ({ item, originalIndex: index }));
+        if (!sheets[activeSheetIndex]) return;
+        const activeItems = sheets[activeSheetIndex].items;
+        const indexedItems = activeItems.map((item, index) => ({ item, originalIndex: index }));
 
         switch (currentSortOrder) {
             case 'category_asc':
@@ -737,13 +742,14 @@ const getDefaultFinancialLabels = () => ({
                  indexedItems.sort((a, b) => a.originalIndex - b.originalIndex);
                 break;
         }
-        offerItems = indexedItems.map(i => i.item);
+        sheets[activeSheetIndex].items = indexedItems.map(i => i.item);
     };
 
     const updateSummaryPageCheckboxState = () => {
-        const hasForeignItems = visibleColumns.foreign_price && offerItems.some(i => parseFloat(i.foreign_total_usd || 0) > 0);
+        const allItems = sheets.flatMap(sheet => sheet.items);
+        const hasForeignItems = visibleColumns.foreign_price && allItems.some(i => parseFloat(i.foreign_total_usd || 0) > 0);
 
-        if (!hasForeignItems && offerItems.length > 0) {
+        if (!hasForeignItems && allItems.length > 0) {
             enableSummaryPageCheckbox.checked = false;
         } else {
             enableSummaryPageCheckbox.checked = true;
@@ -808,6 +814,7 @@ const getDefaultFinancialLabels = () => ({
                 itemDiv.onclick = () => {
                     const row = targetCell.closest('tr');
                     const itemIndex = parseInt(row.dataset.itemIndex, 10);
+                    const offerItems = sheets[activeSheetIndex].items;
 
                     const newItem = {
                         ...item,
@@ -893,265 +900,146 @@ const getDefaultFinancialLabels = () => ({
 
 
     const renderOfferTable = () => {
-        const hasItems = offerItems.length > 0;
-        financialsSection.classList.toggle('hidden', !hasItems);
-        tablePlaceholder.style.display = hasItems ? 'none' : 'block';
-        spreadsheetContainer.style.display = hasItems ? 'block' : 'none'; // Explicitly hide/show the container
-        offerTableActions.style.display = 'block';
-
-        if (!hasItems) {
-            if (spreadsheet) {
-                spreadsheet.destroy();
-                spreadsheet = null;
-            }
-            spreadsheetContainer.innerHTML = '';
-            renderFinancialSummaryUI();
-            suggestCovers();
-            return;
-        }
-
+        cleanupSuggestions();
+        offerTableHead.innerHTML = '';
+        offerTableBody.innerHTML = '';
+        
+        const offerItems = sheets[activeSheetIndex] ? sheets[activeSheetIndex].items : [];
         sortOfferItems();
 
-        // --- START: CORRECTED LOGIC ---
-        const getColumnLetter = (colIndex) => { // 0-based index
-            let letter = '';
-            let temp;
-            while (colIndex >= 0) {
-                temp = colIndex % 26;
-                letter = String.fromCharCode(temp + 65) + letter;
-                colIndex = Math.floor(colIndex / 26) - 1;
-            }
-            return letter;
-        };
+        const hasItems = offerItems.length > 0;
+        const hasAnyItems = sheets.some(sheet => sheet.items.length > 0);
 
-        const nestedHeaders = [{ title: ' ', colspan: 4 }];
-        const columns = [
-            { type: 'number', title: 'SL', width: 50, readOnly: true },
-            { type: 'richtext', title: 'DESCRIPTION', width: 450, wordWrap: true },
-            { type: 'numeric', title: 'QTY', width: 80, mask: '#,##0' },
-            { type: 'text', title: 'UNIT', width: 100 },
-        ];
-        
-        const priceColumnDefinitions = [
-            { id: 'foreign_price', visible: visibleColumns.foreign_price, header: financialLabels.foreignPrice || 'FOREIGN PRICE', currency: 'USD', priceKey: 'foreign_price_usd' },
-            { id: 'po_price', visible: currentUser.role === 'admin' && visibleColumns.po_price, header: 'PO PRICE', currency: 'USD', priceKey: 'po_price_usd' },
-            { id: 'local_supply_price', visible: visibleColumns.local_supply_price, header: financialLabels.localPrice || 'LOCAL SUPPLY PRICE', currency: 'BDT', priceKey: 'local_supply_price_bdt' },
-            { id: 'installation_price', visible: visibleColumns.installation_price, header: financialLabels.installationPrice || 'INSTALLATION PRICE', currency: 'BDT', priceKey: 'installation_price_bdt' }
-        ];
+        financialsSection.classList.toggle('hidden', !hasAnyItems);
+        tablePlaceholder.style.display = hasItems ? 'none' : 'block';
+        offerTableActions.style.display = 'block';
 
-        priceColumnDefinitions.forEach(def => {
-            if (def.visible) {
-                nestedHeaders.push({ title: def.header, colspan: 2 });
-                const mask = def.currency === 'USD' ? '$ #,##0.00' : 'BDT #,##0.00';
-                columns.push({ type: 'numeric', title: `PRICE (${def.currency})`, mask, width: 150, ... (def.id === 'installation_price' && { editor: customPriceEditor }) });
-                columns.push({ type: 'numeric', title: `TOTAL (${def.currency})`, mask, width: 150, readOnly: true });
-            }
-        });
-        
-        nestedHeaders.push({ title: ' ', colspan: 1 });
-        columns.push({ type: 'dropdown', title: 'CATEGORY', width: 120, source: ['FDS', 'FPS', 'FD', 'FC', 'MISC'] });
-
-        // Hidden metadata columns
-        columns.push({ type: 'text', title: 'item_code', width: 0.1 });
-        columns.push({ type: 'text', title: 'source_type', width: 0.1 });
-        columns.push({ type: 'text', title: 'isCustom', width: 0.1 });
-
-        const data = offerItems.map((item, index) => {
-            const rowData = [
-                index + 1,
-                item.description || '',
-                item.qty || 1,
-                item.unit || 'Pcs',
-            ];
-            
-            let currentColIndex = 4; // After SL, DESC, QTY, UNIT
-
-            priceColumnDefinitions.forEach(def => {
-                if(def.visible) {
-                    rowData.push(item[def.priceKey] || 0);
-                    const priceColLetter = getColumnLetter(currentColIndex);
-                    // Column C is always Qty (index 2)
-                    rowData.push(`=C${index + 1}*${priceColLetter}${index + 1}`);
-                    currentColIndex += 2;
-                }
-            });
-            
-            rowData.push(
-                item.make || 'MISC',
-                item.item_code || '',
-                item.source_type || 'custom',
-                JSON.stringify(item.isCustom || {})
-            );
-            return rowData;
-        });
-        // --- END: CORRECTED LOGIC ---
-        
-        if (spreadsheet) {
-            spreadsheet.destroy();
-            spreadsheet = null;
+        if (!hasAnyItems && !hasItems) {
+             renderFinancialSummaryUI();
+             suggestCovers();
+             return;
         }
 
-        const customPriceEditor = function() {
-            // Your existing editor logic here, if you have one.
-            // For now, let's just make it a standard editor.
-            var editor = document.createElement('div');
-            editor.classList.add('editor');
-        
-            editor.open = function(cell, value) {
-                editor.innerText = value || '';
-                editor.focus();
-            }
-        
-            editor.close = function() {
-                // You can add logic here if needed when the editor closes
-            }
-        
-            editor.get = function() {
-                return editor.innerText;
-            }
-            return editor;
+        const headerRow1 = document.createElement('tr');
+        const headerRow2 = document.createElement('tr');
+        const addHeader = (row, text, opts = {}) => {
+            const th = document.createElement('th');
+            th.innerHTML = text;
+            th.className = `px-2 py-2 border border-slate-300 dark:border-slate-600 text-center align-middle ${opts.className || ''}`;
+            if(opts.rowSpan) th.rowSpan = opts.rowSpan;
+            if(opts.colSpan) th.colSpan = opts.colSpan;
+            row.appendChild(th);
         };
 
+        addHeader(headerRow1, '<i class="fas fa-grip-vertical text-slate-400"></i>', { rowSpan: 2 });
+        addHeader(headerRow1, 'SL NO', { rowSpan: 2 });
+        addHeader(headerRow1, 'DESCRIPTION', { rowSpan: 2, className: 'w-1/3' });
+        addHeader(headerRow1, 'QTY', { rowSpan: 2 });
+        addHeader(headerRow1, 'UNIT', { rowSpan: 2 });
 
-        spreadsheet = jspreadsheet(spreadsheetContainer, {
-            data: data,
-            nestedHeaders: [nestedHeaders],
-            columns: columns,
-            allowInsertRow: true,
-            allowDeleteRow: true,
-            rowDrag: true,
-            columnDrag: false,
-            columnResize: true,
-            tableOverflow: true,
-            tableHeight: 'auto',
-            license: 'NWU1ZTdkYjY4N2M5ZDA2ZDA2M2JjMWQwYTUwYjhiNTE5MjRlMjE0NTU5OTg4ZGYzMDllMDRmYTdiYmE4ODVlYTc3ZTZkMTQ1MzgxNmMzNTZiYjkxMjkzY2I5ZTA3OGQyNGM0NmY3OWExMmI3MDMxYjE2Y2UzZmY0MmM1M2U2MTAsZXlKdVlXMWxJam9pU25Od2NtVmhaSE5vWldWMElpd2laR0YwWlNJNk1UWTRPRFUzTkRBNE1Td2libVYwWlhKd2JTSjkuNG0wVjVHRmdnQnU5M25jMFFuTVFfLVZmMFlqU0EwYnF4Zlp6WnNVRjRLbw==',
-            onafterchanges: (instance, records) => {
-                if (isRestoringState) return;
+        const priceHeaders = [
+            { title: 'FOREIGN PRICE', currency: 'USD', key: 'foreign_price', price_key: 'foreign_price_usd', total_key: 'foreign_total_usd', is_visible: visibleColumns.foreign_price },
+            { title: 'PO PRICE', currency: 'USD', key: 'po_price', price_key: 'po_price_usd', total_key: 'po_total_usd', is_visible: currentUser.role === 'admin' && visibleColumns.po_price},
+            { title: 'LOCAL SUPPLY PRICE', currency: 'BDT', key: 'local_supply_price', price_key: 'local_supply_price_bdt', total_key: 'local_supply_total_bdt', is_visible: visibleColumns.local_supply_price},
+            { title: 'INSTALLATION PRICE', currency: 'BDT', key: 'installation_price', price_key: 'installation_price_bdt', total_key: 'installation_total_bdt', is_visible: visibleColumns.installation_price }
+        ];
 
-                records.forEach(record => {
-                    const [row, col, oldValue, newValue] = record;
-                    const item = offerItems[row];
-                    if (!item) return;
-                    
-                    const headerTitle = instance.getHeader(col);
-                    const parentHeader = instance.getHeader(col, true);
-
-                    // Map column titles back to item properties
-                    if (headerTitle === 'DESCRIPTION') item.description = newValue;
-                    else if (headerTitle === 'QTY') item.qty = parseFloat(newValue) || 1;
-                    else if (headerTitle === 'UNIT') item.unit = newValue;
-                    else if (headerTitle === 'CATEGORY') item.make = newValue;
-                    else if (headerTitle.startsWith('PRICE')) {
-                        let updated = false;
-                        priceColumnDefinitions.forEach(def => {
-                            if (def.visible && parentHeader.includes(def.header)) {
-                                item[def.priceKey] = parseFloat(newValue) || 0;
-                                if (typeof item.isCustom !== 'object' || item.isCustom === null) item.isCustom = {};
-                                item.isCustom[def.priceKey] = true;
-                                updated = true;
-                            }
-                        });
-                    }
-
-                    // Update totals in internal state
-                    const qty = item.qty || 1;
-                    item.foreign_total_usd = (qty * (item.foreign_price_usd || 0)).toFixed(2);
-                    item.po_total_usd = (qty * (item.po_price_usd || 0)).toFixed(2);
-                    item.local_supply_total_bdt = (qty * (item.local_supply_price_bdt || 0)).toFixed(2);
-                    item.installation_total_bdt = (qty * (item.installation_price_bdt || 0)).toFixed(2);
-                });
-
-                updateFinancialSummary();
-                renderFinancialSummaryUI();
-                captureState();
-            },
-            oninsertrow: (instance, rowIndex, numOfRows, isBefore) => {
-                 if(isRestoringState) return;
-                const newItem = {
-                    customId: `custom_${Date.now()}`, description: '', qty: 1, unit: 'Pcs',
-                    foreign_price_usd: 0, foreign_total_usd: 0,
-                    local_supply_price_bdt: 0, local_supply_total_bdt: 0,
-                    installation_price_bdt: 0, installation_total_bdt: 0,
-                    po_price_usd: 0, po_total_usd: 0,
-                    isCustom: {}, source_type: 'local', make: 'MISC'
-                };
-                offerItems.splice(rowIndex, 0, newItem);
-                setTimeout(() => {
-                    renderOfferTable();
-                    captureState();
-                }, 50);
-            },
-            ondeleterow: (instance, startRow, numOfRows) => {
-                 if(isRestoringState) return;
-                 offerItems.splice(startRow, numOfRows);
-                 setTimeout(() => {
-                    renderOfferTable();
-                    renderOfferCategoryCheckboxes();
-                    updateActionButtons();
-                    captureState();
-                 }, 50);
-            },
-            onmoverow: (instance, from, to) => {
-                if(isRestoringState) return;
-                const item = offerItems.splice(from, 1)[0];
-                offerItems.splice(to, 0, item);
-                currentSortOrder = 'custom';
-                setupSortDropdown();
-                setTimeout(() => {
-                    renderOfferTable();
-                    captureState();
-                }, 50);
-            }
+        priceHeaders.forEach(h => {
+            if(!h.is_visible) return;
+            addHeader(headerRow1, h.title, { colSpan: 2, className: `${h.key}-col text-center` });
+            addHeader(headerRow2, `PRICE (${h.currency})`, { className: `${h.key}-col` });
+            addHeader(headerRow2, `TOTAL (${h.currency})`, { className: `${h.key}-col` });
         });
 
-        // Helper to map spreadsheet row array to our item object structure
-        const mapRowToItem = (row) => {
-            let colIndex = 0;
-            const item = {};
-            
-            // This mapping needs to be dynamic too
-            item.description = row[colIndex++] || '';
-            item.qty = parseFloat(row[colIndex++]) || 1;
-            item.unit = row[colIndex++] || 'Pcs';
-            
-            priceColumnDefinitions.forEach(def => {
-                if (def.visible) {
-                    item[def.priceKey] = parseFloat(row[colIndex++]) || 0;
-                    colIndex++; // Skip total column
+        addHeader(headerRow1, 'CATEGORY', { rowSpan: 2, className: 'text-center w-[10%]' });
+        addHeader(headerRow1, 'Action', { rowSpan: 2 });
+        offerTableHead.appendChild(headerRow1);
+        offerTableHead.appendChild(headerRow2);
+
+        offerItems.forEach((item, index) => {
+            const row = document.createElement('tr');
+            row.dataset.itemIndex = index;
+
+            let rowClasses = "border-t border-slate-200 dark:border-slate-700";
+            if (item.source_type !== 'foreign' && currentSortOrder !== 'source_foreign') {
+                rowClasses += " bg-slate-100 dark:bg-slate-700/50";
+            }
+            if (item.source_type === 'foreign' && currentSortOrder === 'source_foreign') {
+                 rowClasses += " bg-blue-50 dark:bg-blue-900/20";
+            }
+            row.className = rowClasses;
+
+            let rowHTML = `
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600 cursor-grab move-handle" draggable="true"><i class="fas fa-grip-vertical text-slate-400 pointer-events-none"></i></td>
+                <td class="px-2 py-2 text-center border border-slate-300 dark:border-slate-600">${index + 1}</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 preserve-lines" contenteditable="true" data-field="description">${item.description || ''}</td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600"><input type="number" class="w-16 p-1 bg-transparent dark:bg-transparent rounded text-right" min="1" value="${item.qty || 1}" data-field="qty"></td>
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 text-center" contenteditable="true" data-field="unit">${item.unit || 'Pcs'}</td>`;
+
+            priceHeaders.forEach(h => {
+                if(h.is_visible) {
+                    const unitPrice = parseFloat(item[h.price_key] || 0);
+                    const totalValue = parseFloat(item[h.total_key] || 0);
+                    const locale = h.currency === 'USD' ? 'en-US' : 'en-BD';
+                    const formattedTotal = totalValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const formattedUnitPrice = unitPrice.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                    const isModifiedPrice = typeof item.isCustom === 'object' && item.isCustom !== null && item.isCustom[h.price_key];
+                    let priceCellClass = '';
+                    let showSaveBtn = false;
+
+                    if (isModifiedPrice) {
+                        priceCellClass = 'text-red-500 font-bold';
+                    }
+
+                    if (isModifiedPrice && h.key === 'installation_price' && currentUser.role === 'admin' && unitPrice > 0 && item.item_code) {
+                        showSaveBtn = true;
+                    }
+
+                    const saveBtnHtml = showSaveBtn
+                        ? `<button class="save-price-to-master-btn text-xs text-green-500 hover:text-green-700 p-0.5 ml-1" title="Save this price to master list"
+                                   data-item-code="${item.item_code}"
+                                   data-price-type="${h.key}"
+                                   data-price-value="${unitPrice.toFixed(2)}"
+                                   data-description="${htmlToText(item.description)}"
+                                   data-unit="${item.unit || 'Pcs'}"
+                                   data-product-type="${item.make || 'MISC'}"
+                                   data-source-type="${item.source_type || 'local'}"
+                           ><i class="fas fa-save"></i></button>`
+                        : '';
+
+                    rowHTML += `
+                        <td class="${h.key}-col px-2 py-2 border border-slate-300 dark:border-slate-600 text-right ${priceCellClass}" contenteditable="true" data-field="${h.price_key}">${formattedUnitPrice}${saveBtnHtml}</td>
+                        <td class="${h.key}-col px-2 py-2 font-semibold border border-slate-300 dark:border-slate-600 text-right" data-field="${h.total_key}">${formattedTotal}</td>`;
                 }
             });
-            
-            item.make = row[colIndex++] || 'MISC';
 
-            // Hidden fields
-            item.item_code = row[colIndex++] || '';
-            item.source_type = row[colIndex++] || 'custom';
-            try {
-                item.isCustom = JSON.parse(row[colIndex++] || '{}');
-            } catch(e) {
-                item.isCustom = {};
-            }
-
-            // Recalculate totals to be safe
-            const qty = item.qty;
-            item.foreign_total_usd = (qty * (item.foreign_price_usd || 0)).toFixed(2);
-            item.po_total_usd = (qty * (item.po_price_usd || 0)).toFixed(2);
-            item.local_supply_total_bdt = (qty * (item.local_supply_price_bdt || 0)).toFixed(2);
-            item.installation_total_bdt = (qty * (item.installation_price_bdt || 0)).toFixed(2);
-
-            return item;
-        };
-
-
+            rowHTML += `
+                <td class="px-2 py-2 border border-slate-300 dark:border-slate-600 align-middle">
+                    <select data-field="make" class="w-full p-1 bg-transparent dark:bg-slate-700 rounded border-slate-300 dark:border-slate-600 focus:ring-sky-500 text-center">
+                        <option value="FDS" ${item.make === 'FDS' ? 'selected' : ''}>FDS</option>
+                        <option value="FPS" ${item.make === 'FPS' ? 'selected' : ''}>FPS</option>
+                        <option value="FD" ${item.make === 'FD' ? 'selected' : ''}>FD</option>
+                        <option value="FC" ${item.make === 'FC' ? 'selected' : ''}>FC</option>
+                        <option value="MISC" ${item.make === 'MISC' ? 'selected' : ''}>MISC</option>
+                    </select>
+                </td>
+                <td class="text-center px-2 py-2 border border-slate-300 dark:border-slate-600 space-x-1">
+                    <button class="add-row-after-btn text-slate-400 hover:text-green-500 p-1" title="Add Row After"><i class="fas fa-plus-circle"></i></button>
+                    <button class="remove-item-btn text-slate-400 hover:text-red-500 p-1" title="Remove Item"><i class="fas fa-trash"></i></button>
+                </td>`;
+            row.innerHTML = rowHTML;
+            offerTableBody.appendChild(row);
+        });
         updateFinancialSummary();
         renderFinancialSummaryUI();
         checkAdminToolsVisibility();
     };
 
-
     const renderOfferCategoryCheckboxes = (savedCategories = null) => {
+        const allItems = sheets.flatMap(sheet => sheet.items);
         const allCategories = ['FDS', 'FPS', 'FD', 'FC'];
-        const categoriesToRender = savedCategories !== null ? savedCategories : [...new Set(offerItems.map(item => item.make))];
+        const categoriesToRender = savedCategories !== null ? savedCategories : [...new Set(allItems.map(item => item.make))];
         if (offerCategoryCheckboxes) {
             offerCategoryCheckboxes.innerHTML = allCategories.map(cat => {
                 const checked = categoriesToRender.includes(cat) ? 'checked' : '';
@@ -1177,10 +1065,11 @@ const getDefaultFinancialLabels = () => ({
         }
         updateFinancialLabelsInDOM();
 
-        const subtotal_foreign = offerItems.reduce((acc, item) => acc + parseFloat(item.foreign_total_usd || 0), 0);
-        const subtotal_po = offerItems.reduce((acc, item) => acc + parseFloat(item.po_total_usd || 0), 0);
-        const subtotal_local = offerItems.reduce((acc, item) => acc + parseFloat(item.local_supply_total_bdt || 0), 0);
-        const subtotal_installation = offerItems.reduce((acc, item) => acc + parseFloat(item.installation_total_bdt || 0), 0);
+        const allItems = sheets.flatMap(sheet => sheet.items);
+        const subtotal_foreign = allItems.reduce((acc, item) => acc + parseFloat(item.foreign_total_usd || 0), 0);
+        const subtotal_po = allItems.reduce((acc, item) => acc + parseFloat(item.po_total_usd || 0), 0);
+        const subtotal_local = allItems.reduce((acc, item) => acc + parseFloat(item.local_supply_total_bdt || 0), 0);
+        const subtotal_installation = allItems.reduce((acc, item) => acc + parseFloat(item.installation_total_bdt || 0), 0);
 
         const freight = financials.use_freight ? parseFloat(financials.freight_foreign_usd || 0) : 0;
         const freight_po = financials.use_freight_po ? parseFloat(financials.freight_po_usd || 0) : 0;
@@ -1259,7 +1148,12 @@ const getDefaultFinancialLabels = () => ({
     };
 
     const resetOfferState = () => {
-        selectedClient = null; offerItems = []; currentProjectId = null; currentReferenceNumber = null; selectedCover = null;
+        selectedClient = null; 
+        sheets = [{ name: 'BOQ 1', items: [] }];
+        activeSheetIndex = 0;
+        currentProjectId = null; 
+        currentReferenceNumber = null; 
+        selectedCover = null;
         isSummaryPageEnabled = true;
         summaryScopeDescriptions = {};
         includeSignature = true;
@@ -1325,6 +1219,7 @@ const getDefaultFinancialLabels = () => ({
         searchLocalCheckbox.checked = searchSettings.local;
 
         updateFinancialLabelsInDOM();
+        renderSheetTabs();
         renderOfferTable(); updateActionButtons();
         renderOfferCategoryCheckboxes();
         renderSelectedCover(); suggestCovers();
@@ -1339,7 +1234,8 @@ const getDefaultFinancialLabels = () => ({
     };
 
     const updateActionButtons = () => {
-        const disabled = offerItems.length === 0 || !selectedClient;
+        const allItems = sheets.flatMap(sheet => sheet.items);
+        const disabled = allItems.length === 0 || !selectedClient;
         exportPdfBtn.disabled = disabled; exportXlsxBtn.disabled = disabled; saveProjectBtn.disabled = disabled; saveAsBtn.disabled = disabled;
     };
 
@@ -1375,13 +1271,14 @@ const getDefaultFinancialLabels = () => ({
     };
 
     const suggestCovers = async () => {
+        const allItems = sheets.flatMap(sheet => sheet.items);
         if (!selectedClient) {
             suggestedCoversContainer.innerHTML = '<p class="text-slate-500 col-span-full">Select a client to see suggestions.</p>';
             return;
         }
 
         const clientNameParts = selectedClient.name.toLowerCase().split(' ').filter(p => p.length > 2);
-        const categories = [...new Set(offerItems.map(item => item.make))].map(c => c.toLowerCase());
+        const categories = [...new Set(allItems.map(item => item.make))].map(c => c.toLowerCase());
 
         try {
             const res = await fetch(`${API_URL}/get_covers`);
@@ -1425,6 +1322,7 @@ const getDefaultFinancialLabels = () => ({
         }
 
         let refForUpload = currentReferenceNumber;
+        const allItems = sheets.flatMap(sheet => sheet.items);
         if (!refForUpload) {
             if (!selectedClient) {
                 showToast('Please select a client before uploading a cover.', true);
@@ -1435,7 +1333,7 @@ const getDefaultFinancialLabels = () => ({
                 refForUpload = NameController.generateOfferReference({
                     clientName: selectedClient.name,
                     categories: checkedCategories,
-                    items: offerItems,
+                    items: allItems,
                     visibleColumns: visibleColumns
                 });
                 currentReferenceNumber = refForUpload;
@@ -1485,6 +1383,7 @@ const getDefaultFinancialLabels = () => ({
             let refToSave = currentReferenceNumber;
             let idToSave = isSaveAs ? null : currentProjectId;
             const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
+            const allItems = sheets.flatMap(sheet => sheet.items);
 
             if (isSaveAs && newName) {
                 refToSave = newName;
@@ -1492,7 +1391,7 @@ const getDefaultFinancialLabels = () => ({
                 refToSave = NameController.generateOfferReference({
                     clientName: selectedClient.name,
                     categories: checkedCategories,
-                    items: offerItems,
+                    items: allItems,
                     visibleColumns: visibleColumns
                 });
             } else if (!idToSave && currentReferenceNumber) {
@@ -1501,7 +1400,7 @@ const getDefaultFinancialLabels = () => ({
 
             const payload = {
                 projectId: idToSave, referenceNumber: refToSave, client: selectedClient,
-                items: offerItems, financials,
+                sheets: sheets, financials,
                 financialLabels,
                 user: currentUser, projectType: 'offer',
                 selected_cover: selectedCover,
@@ -1540,6 +1439,7 @@ const getDefaultFinancialLabels = () => ({
         button.disabled = true;
 
         try {
+            const allItems = sheets.flatMap(sheet => sheet.items);
             const checkedCategories = Array.from(document.querySelectorAll('#offer-category-checkboxes input:checked')).map(cb => cb.value);
             const termsAndConditions = tncTextarea.value;
             let refForExport = currentReferenceNumber;
@@ -1548,7 +1448,7 @@ const getDefaultFinancialLabels = () => ({
                 refForExport = NameController.generateOfferReference({
                     clientName: selectedClient.name,
                     categories: checkedCategories,
-                    items: offerItems,
+                    items: allItems,
                     visibleColumns: visibleColumns
                 });
                 currentReferenceNumber = refForExport;
@@ -1561,7 +1461,7 @@ const getDefaultFinancialLabels = () => ({
             });
 
             const summaryScopes = {};
-            offerItems.forEach(item => {
+            allItems.forEach(item => {
                 const type = item.make || 'MISC';
                 const foreignValue = parseFloat(item.foreign_total_usd || 0);
                 const localSupplyValue = parseFloat(item.local_supply_total_bdt || 0);
@@ -1591,7 +1491,7 @@ const getDefaultFinancialLabels = () => ({
             });
 
             const payload = {
-                items: offerItems, client: selectedClient, financials, referenceNumber: refForExport,
+                sheets: sheets, client: selectedClient, financials, referenceNumber: refForExport,
                 user: currentUser, categories: checkedCategories, terms_and_conditions: termsAndConditions,
                 selected_cover: selectedCover,
                 visibleColumns,
@@ -1645,7 +1545,8 @@ const getDefaultFinancialLabels = () => ({
 
     const applyCustomMarkup = () => {
         if (currentUser.role !== 'admin' || !adminMarkupInput) return;
-
+        
+        const allItems = sheets.flatMap(sheet => sheet.items);
         const markupPercent = parseFloat(adminMarkupInput.value);
 
         if (isNaN(markupPercent) || markupPercent < 0) {
@@ -1654,7 +1555,7 @@ const getDefaultFinancialLabels = () => ({
 
         const markupFactor = 1 + (markupPercent / 100);
 
-        offerItems.forEach(item => {
+        allItems.forEach(item => {
             const poPrice = parseFloat(item.po_price_usd || 0);
 
             if (poPrice > 0) {
@@ -1847,7 +1748,7 @@ const getDefaultFinancialLabels = () => ({
                 source_type: 'local',
                 make: 'FPS'
             };
-            offerItems.push(newItem);
+            sheets[activeSheetIndex].items.push(newItem);
 
             if (!tncLocalSupplyCheckbox.checked) {
                 tncLocalSupplyCheckbox.checked = true;
@@ -1857,12 +1758,13 @@ const getDefaultFinancialLabels = () => ({
             renderOfferTable();
             updateActionButtons();
             captureState();
-            
-            if (spreadsheet) {
-                setTimeout(() => {
-                    spreadsheet.focus();
-                    spreadsheet.updateSelectionFromCoords(1, offerItems.length - 1);
-                }, 100);
+
+            const newRow = offerTableBody.querySelector(`tr[data-item-index="${sheets[activeSheetIndex].items.length - 1}"]`);
+            if (newRow) {
+                const descCell = newRow.querySelector('[data-field="description"]');
+                if (descCell) {
+                    descCell.focus();
+                }
             }
         });
     }
@@ -2071,7 +1973,7 @@ const getDefaultFinancialLabels = () => ({
                 setupColumnsDropdown();
             }
 
-            offerItems.push(newItem);
+            sheets[activeSheetIndex].items.push(newItem);
 
             if (newItem.source_type === 'foreign' && !tncInternationalCheckbox.checked) {
                 tncInternationalCheckbox.checked = true;
@@ -2101,6 +2003,209 @@ const getDefaultFinancialLabels = () => ({
         itemSearchInput.dispatchEvent(new Event('keyup', { bubbles:true }));
         captureState();
     });
+
+    offerTableBody.addEventListener('paste', e => {
+        const target = e.target;
+        const field = target.dataset.field;
+        const isNumericField = field && (field.includes('price') || field === 'qty');
+
+        if (target.matches('[contenteditable]') && isNumericField) {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            const sanitizedText = text.replace(/,/g, '');
+            document.execCommand('insertText', false, sanitizedText);
+        }
+    });
+
+    offerTableBody.addEventListener('input', (e) => {
+        const target = e.target;
+        const row = target.closest('tr'); if (!row) return;
+        const itemIndex = parseInt(row.dataset.itemIndex, 10);
+        const item = sheets[activeSheetIndex].items[itemIndex]; if (!item) return;
+
+        const field = target.dataset.field;
+        if (field) {
+            if (field === 'description') {
+                handleDescriptionInput(e);
+                item[field] = target.innerHTML;
+            } else {
+                const rawValue = target.matches('[contenteditable]') ? target.textContent : target.value;
+                if (field.includes('price')) {
+                    item[field] = rawValue.replace(/,/g, '');
+                } else {
+                    item[field] = rawValue;
+                }
+
+                if (field.includes('price')) {
+                    if (typeof item.isCustom !== 'object' || item.isCustom === null) {
+                        item.isCustom = {};
+                    }
+                    item.isCustom[field] = true;
+                }
+            }
+
+            const qty = parseFloat(item.qty || 1);
+            item.foreign_total_usd = (qty * parseFloat(item.foreign_price_usd || 0)).toFixed(2);
+            item.local_supply_total_bdt = (qty * parseFloat(item.local_supply_price_bdt || 0)).toFixed(2);
+            item.installation_total_bdt = (qty * parseFloat(item.installation_price_bdt || 0)).toFixed(2);
+            item.po_total_usd = (qty * parseFloat(item.po_price_usd || 0)).toFixed(2);
+
+            const updateTotalCell = (totalField, value, currency) => {
+                const cell = row.querySelector(`[data-field="${totalField}"]`);
+                if (cell) cell.textContent = parseFloat(value).toLocaleString(currency === 'USD' ? 'en-US' : 'en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+            updateTotalCell('foreign_total_usd', item.foreign_total_usd, 'USD');
+            updateTotalCell('local_supply_total_bdt', item.local_supply_total_bdt, 'BDT');
+            updateTotalCell('installation_total_bdt', item.installation_total_bdt, 'BDT');
+            updateTotalCell('po_total_usd', item.po_total_usd, 'USD');
+
+            if(field.includes('price')) {
+                const mainScroller = document.querySelector('main');
+                const scrollPos = mainScroller.scrollTop;
+
+                let selection = window.getSelection();
+                let cursorPosition = 0;
+                if (selection.rangeCount > 0) {
+                    let range = selection.getRangeAt(0);
+                    cursorPosition = range.startOffset;
+                }
+
+                renderOfferTable();
+
+                mainScroller.scrollTo({ top: scrollPos, behavior: 'instant' });
+                const newRow = offerTableBody.querySelector(`tr[data-item-index="${itemIndex}"]`);
+                if (newRow) {
+                    const newTarget = newRow.querySelector(`[data-field="${field}"]`);
+                    if (newTarget) {
+                        newTarget.focus();
+                        try {
+                            let newRange = document.createRange();
+                            let newSelection = window.getSelection();
+                            if (newTarget.childNodes.length > 0) {
+                                let newCursorPosition = Math.min(cursorPosition, newTarget.childNodes[0].length);
+                                newRange.setStart(newTarget.childNodes[0], newCursorPosition);
+                                newRange.collapse(true);
+                                newSelection.removeAllRanges();
+                                newSelection.addRange(newRange);
+                            }
+                        } catch (err) {
+                            console.warn("Could not restore cursor position.", err);
+                        }
+                    }
+                }
+            }
+
+            updateFinancialSummary();
+            if(field === 'make') {
+                renderFinancialSummaryUI();
+            }
+            captureState();
+        }
+    });
+
+    offerTableBody.addEventListener('click', async (e) => {
+        const button = e.target.closest('button');
+        if (!button) return;
+
+        const row = button.closest('tr');
+        if (!row) return;
+
+        const itemIndex = parseInt(row.dataset.itemIndex, 10);
+        const offerItems = sheets[activeSheetIndex].items;
+
+        if (button.classList.contains('save-price-to-master-btn')) {
+            if (currentUser.role !== 'admin') return;
+            const itemData = { ...button.dataset };
+            const confirmed = await showConfirmModal(
+                `Are you sure you want to update the master price for <strong>${itemData.itemCode || 'this custom item'}</strong>?<br>New Price: <strong>${itemData.priceValue}</strong>`,
+                'Update Master Price List',
+                'bg-green-600 hover:bg-green-700',
+                'Confirm Update'
+            );
+            if (!confirmed) return;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const response = await fetch(`${API_URL}/update_master_price`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...itemData, adminEmail: currentUser.email })
+                });
+                const result = await response.json();
+                showToast(result.message, !result.success);
+                if (result.success) {
+                    if (typeof offerItems[itemIndex].isCustom === 'object') {
+                        delete offerItems[itemIndex].isCustom[itemData.priceType + '_bdt'];
+                    }
+                    renderOfferTable();
+                    captureState();
+                } else {
+                     button.innerHTML = '<i class="fas fa-save"></i>';
+                }
+            } catch (err) {
+                showToast(`An error occurred: ${err.message}`, true);
+                button.innerHTML = '<i class="fas fa-save"></i>';
+            }
+        } else if (button.classList.contains('remove-item-btn')) {
+            offerItems.splice(itemIndex, 1);
+        } else if (button.classList.contains('add-row-after-btn')) {
+            const newItem = {
+                customId: `custom_${Date.now()}`, description: '', qty: 1, unit: 'Pcs',
+                foreign_price_usd: '0.00', foreign_total_usd: '0.00',
+                local_supply_price_bdt: '0.00', local_supply_total_bdt: '0.00',
+                installation_price_bdt: '0.00', installation_total_bdt: '0.00',
+                isCustom: {}, source_type: 'local', make: 'MISC'
+            };
+            offerItems.splice(itemIndex + 1, 0, newItem);
+        }
+
+        if (!button.classList.contains('save-price-to-master-btn')) {
+            renderOfferTable();
+            renderOfferCategoryCheckboxes();
+            updateActionButtons();
+            captureState();
+        }
+    });
+
+    // Drag and Drop Listeners
+    offerTableBody.addEventListener('dragstart', (e) => {
+        const handle = e.target.closest('.move-handle');
+        if (handle) {
+            const row = handle.closest('tr');
+            draggedItemIndex = parseInt(row.dataset.itemIndex, 10);
+            e.dataTransfer.effectAllowed = 'move';
+            row.classList.add('bg-yellow-200', 'dark:bg-yellow-800/50');
+        } else {
+            e.preventDefault();
+        }
+    });
+
+    offerTableBody.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+
+    offerTableBody.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetRow = e.target.closest('tr');
+        if (targetRow && draggedItemIndex !== null) {
+            const offerItems = sheets[activeSheetIndex].items;
+            const targetIndex = parseInt(targetRow.dataset.itemIndex, 10);
+            const draggedItem = offerItems.splice(draggedItemIndex, 1)[0];
+            offerItems.splice(targetIndex, 0, draggedItem);
+            currentSortOrder = 'custom';
+            setupSortDropdown();
+            renderOfferTable();
+            captureState();
+        }
+    });
+
+    offerTableBody.addEventListener('dragend', (e) => {
+        const draggedRow = offerTableBody.querySelector('.bg-yellow-200');
+        if (draggedRow) {
+            draggedRow.classList.remove('bg-yellow-200', 'dark:bg-yellow-800/50');
+        }
+        draggedItemIndex = null;
+    });
+
 
     if (autoFillBtn) {
         autoFillBtn.addEventListener('click', async () => {
@@ -2142,7 +2247,7 @@ const getDefaultFinancialLabels = () => ({
 
     saveAsBtn.addEventListener('click', () => {
         if (saveAsBtn.disabled) return;
-
+        const allItems = sheets.flatMap(sheet => sheet.items);
         let suggestedName = '';
         if (currentReferenceNumber) {
             const versionMatch = currentReferenceNumber.match(/(V)(\d+)$/);
@@ -2157,7 +2262,7 @@ const getDefaultFinancialLabels = () => ({
             suggestedName = NameController.generateOfferReference({
                 clientName: selectedClient.name,
                 categories: checkedCategories,
-                items: offerItems,
+                items: allItems,
                 visibleColumns: visibleColumns
             });
         }
@@ -2244,7 +2349,7 @@ const getDefaultFinancialLabels = () => ({
             }
             if (newItem.source_type === 'local' && !visibleColumns.local_supply_price) visibleColumns.local_supply_price = true;
             if (parseFloat(newItem.installation_price_bdt) > 0 && !visibleColumns.installation_price) visibleColumns.installation_price = true;
-            offerItems.push(newItem);
+            sheets[activeSheetIndex].items.push(newItem);
         });
         setupColumnsDropdown();
         renderOfferTable(); renderOfferCategoryCheckboxes(); updateActionButtons(); captureState();
@@ -2259,7 +2364,15 @@ const getDefaultFinancialLabels = () => ({
         currentReferenceNumber = projectData.referenceNumber;
         updateProjectState(projectData);
         selectedClient = projectData.client;
-        offerItems = projectData.items;
+        
+        // Backward compatibility: if old `items` format, convert to new `sheets` format
+        if (projectData.items && !projectData.sheets) {
+            sheets = [{ name: 'BOQ 1', items: projectData.items }];
+        } else {
+            sheets = projectData.sheets || [{ name: 'BOQ 1', items: [] }];
+        }
+        activeSheetIndex = 0;
+
 
         const defaultFinancials = {
             freight_foreign_usd: 0,
@@ -2335,6 +2448,7 @@ const getDefaultFinancialLabels = () => ({
         renderFinancialSummaryUI();
         setupColumnsDropdown();
         setupSortDropdown();
+        renderSheetTabs();
         renderOfferTable();
         updateActionButtons();
         renderOfferCategoryCheckboxes(projectData.categories);
@@ -2348,7 +2462,8 @@ const getDefaultFinancialLabels = () => ({
     };
 
     window.performReplaceInOffer = (findText, replaceText, isCaseSensitive, isBold) => {
-        if (!offerItems || offerItems.length === 0) {
+        const allItems = sheets.flatMap(sheet => sheet.items);
+        if (!allItems || allItems.length === 0) {
             showToast('No items to perform replacement on.', true);
             return;
         }
@@ -2359,7 +2474,7 @@ const getDefaultFinancialLabels = () => ({
         const regex = new RegExp(escapedFindText, regexFlags);
 
         let replacementsMade = 0;
-        offerItems.forEach(item => {
+        allItems.forEach(item => {
             if (item.description) {
                 const originalDescription = item.description;
                 const newDescription = item.description.replace(regex, replacement);
