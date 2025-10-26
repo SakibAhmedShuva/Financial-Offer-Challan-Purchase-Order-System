@@ -309,7 +309,12 @@ def export_file(file_type, data):
 
     buffer = io.BytesIO()
 
-    items = data.get('items', [])
+    # MODIFICATION START: Handle sheets structure
+    sheets = data.get('sheets', [])
+    items = [item for sheet in sheets for item in sheet.get('items', [])]
+    data['items'] = items # Overwrite items for existing logic
+    # MODIFICATION END
+
     financials = data.get('financials', {})
     visible_columns = data.get('visibleColumns', {})
     summary_scopes = data.get('summaryScopes', {})
@@ -795,15 +800,24 @@ def search_items():
 @app.route('/project', methods=['POST'])
 def save_project():
     data = request.json
+    project_type = data.get('projectType', 'offer')
 
     # --- NEW SANITIZATION STEP ---
-    items_to_save = data.get('items')
-    if items_to_save:
-        for item in items_to_save:
-            if 'description' in item and item['description']:
-                item['description'] = sanitize_dirty_html(item['description'])
-        data['items'] = items_to_save
+    # Sanitize descriptions in items or sheets
+    if project_type == 'offer' and data.get('sheets'):
+        for sheet in data.get('sheets', []):
+            for item in sheet.get('items', []):
+                if 'description' in item and item['description']:
+                    item['description'] = sanitize_dirty_html(item['description'])
+    else:
+        items_to_save = data.get('items')
+        if items_to_save:
+            for item in items_to_save:
+                if 'description' in item and item['description']:
+                    item['description'] = sanitize_dirty_html(item['description'])
+            data['items'] = items_to_save
     # --- END OF SANITIZATION STEP ---
+
 
     is_new_project = not data.get('projectId')
     project_id = data.get('projectId') or str(uuid.uuid4())
@@ -822,8 +836,6 @@ def save_project():
         except (IOError, json.JSONDecodeError):
             pass # If file is corrupted, proceed with current user as owner
 
-    project_type = data.get('projectType', 'offer')
-
     project_data = {
         'projectId': project_id,
         'referenceNumber': data.get('referenceNumber'),
@@ -831,11 +843,17 @@ def save_project():
         'status': existing_status,
         'owner_email': original_owner_email, # BUG FIX: Use original owner
         'projectType': project_type,
-        'items': data.get('items'),
         'client': data.get('client', {}),
     }
+    
+    # MODIFICATION: Handle both 'sheets' and 'items' structures
+    if project_type == 'offer':
+        project_data['sheets'] = data.get('sheets')
+    else:
+        project_data['items'] = data.get('items')
 
-    if project_type in ['offer', 'po', 'challan']:
+
+    if project_type in ['po', 'challan']:
         project_data['categories'] = data.get('categories', [])
 
     if project_type == 'offer':
@@ -912,10 +930,18 @@ def get_projects():
             reference_number_display = data.get('referenceNumber', 'N/A')
             client_name_display = data.get('client', {}).get('name', 'N/A')
             product_types_display = []
+            
+            # MODIFICATION START: Get all items from sheets if they exist
+            all_items = []
+            if project_type == 'offer' and 'sheets' in data:
+                all_items = [item for sheet in data.get('sheets', []) for item in sheet.get('items', [])]
+            else:
+                all_items = data.get('items', [])
+            # MODIFICATION END
 
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
-                all_cats = set(i.get('make') for i in data.get('items', []))
+                all_cats = set(i.get('make') for i in all_items)
                 cats = sorted([str(c) for c in all_cats if c])
                 cats_part = '_'.join(cats) if cats else 'MISC'
                 abbreviation = ''.join(word[0]for word in client_name.split()).upper()
@@ -928,7 +954,7 @@ def get_projects():
                 client_name_display = "N/A"
                 product_types_display = ["AI Processed"]
             else:
-                all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
+                all_product_types = set(i.get('product_type', 'N/A') for i in all_items)
                 product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
 
             if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
@@ -980,9 +1006,17 @@ def get_all_projects_for_admin():
             client_name_display = data.get('client', {}).get('name', 'N/A')
             product_types_display = []
 
+            # MODIFICATION START: Get all items from sheets if they exist
+            all_items = []
+            if project_type == 'offer' and 'sheets' in data:
+                all_items = [item for sheet in data.get('sheets', []) for item in sheet.get('items', [])]
+            else:
+                all_items = data.get('items', [])
+            # MODIFICATION END
+
             if project_type == 'challan':
                 client_name = data.get('client', {}).get('name', 'NOCLIENT')
-                all_cats = set(i.get('make') for i in data.get('items', []))
+                all_cats = set(i.get('make') for i in all_items)
                 cats = sorted([str(c) for c in all_cats if c])
                 cats_part = '_'.join(cats) if cats else 'MISC'
                 abbreviation = ''.join(word[0]for word in client_name.split()).upper()
@@ -995,7 +1029,7 @@ def get_all_projects_for_admin():
                 client_name_display = "N/A"
                 product_types_display = ["AI Processed"]
             else:
-                all_product_types = set(i.get('product_type', 'N/A') for i in data.get('items', []))
+                all_product_types = set(i.get('product_type', 'N/A') for i in all_items)
                 product_types_display = sorted([str(m) for m in all_product_types if m and m != 'N/A'])
 
             if search_term and search_term not in reference_number_display.lower() and search_term not in client_name_display.lower():
@@ -1509,7 +1543,16 @@ def get_shared_projects():
             if os.path.exists(project_filepath):
                 with open(project_filepath, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    makes = sorted(list(set(item.get('make', 'N/A') for item in data.get('items', []))))
+                    
+                    # MODIFICATION START: Get all items from sheets if they exist
+                    all_items = []
+                    if data.get('projectType') == 'offer' and 'sheets' in data:
+                        all_items = [item for sheet in data.get('sheets', []) for item in sheet.get('items', [])]
+                    else:
+                        all_items = data.get('items', [])
+                    # MODIFICATION END
+
+                    makes = sorted(list(set(item.get('make', 'N/A') for item in all_items)))
                     shared_projects.append({
                         'sl': len(shared_projects) + 1,
                         'projectId': data.get('projectId'),
