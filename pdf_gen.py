@@ -239,8 +239,7 @@ def add_tnc_to_pdf(pdf, tnc_text):
             pdf.set_font('Arial', '', 9)
             pdf.multi_cell(0, 4, sanitized_line, 0, 'L', ln=1)
 
-def draw_boq_content(pdf, data, sections, visible_price_groups):
-    items = data.get('items', [])
+def draw_boq_content(pdf, data, sections, visible_price_groups, items):
     
     all_prices_visible = len(visible_price_groups) >= 3 
     header_font_size, boq_font_size = 8, 9
@@ -340,8 +339,8 @@ def draw_boq_content(pdf, data, sections, visible_price_groups):
         pdf.set_y(start_y + row_height)
 
 
-def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only=False):
-    financials, items = data.get('financials', {}), data.get('items', [])
+def draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, items, is_local_only=False):
+    financials = data.get('financials', {})
     has_additional_charges = data.get('has_additional_charges', False)
     
     label_span_width = sum(c['width'] for c in sections['base'])
@@ -453,6 +452,12 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
     pdf = PDF()
     pdf.set_header_color(header_color_hex)
     pdf.alias_nb_pages()
+    
+    # MODIFICATION: Handle sheets
+    sheets_data = data.get('sheets', [])
+    if not sheets_data: # Backward compatibility for old format
+        sheets_data = [{'name': 'BOQ', 'items': data.get('items', [])}]
+    all_items = [item for sheet in sheets_data for item in sheet.get('items', [])]
     
     financials = data.get('financials', {})
 
@@ -687,44 +692,53 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
             pdf.multi_cell(0, 5, note_text, 0, 'L')
         
         pdf.is_summary_page = False
-        pdf.set_doc_title("Bill of Quantities")
-        pdf.add_page()
-        draw_boq_content(pdf, data, sections, visible_price_groups)
-        draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only)
+        
+        for sheet_data in sheets_data:
+            pdf.set_doc_title(sheet_data['name'])
+            pdf.add_page()
+            draw_boq_content(pdf, data, sections, visible_price_groups, sheet_data['items'])
+            # Only draw summary for the last sheet to avoid repetition
+            if sheet_data == sheets_data[-1]:
+                draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, all_items, is_local_only)
+
     
     else:
         # --- CLASSIC BOQ LAYOUT ---
-        pdf.set_doc_title("Financial Offer")
-        pdf.add_page()
-        client_info = data.get('client', {})
-        full_reference_number = data.get('referenceNumber', "FinancialOffer_NoRef")
-        display_reference = full_reference_number.split('_')[-1] if '_' in full_reference_number else full_reference_number
-        sanitized_reference = sanitize_text(display_reference)
-        sanitized_client_name = sanitize_text(client_info.get('name', 'N/A'))
-        sanitized_client_address = sanitize_text(client_info.get('address', 'N/A'))
+        # MODIFICATION: Loop through sheets
+        for sheet_data in sheets_data:
+            pdf.set_doc_title("Financial Offer" if len(sheets_data) == 1 else sheet_data['name'])
+            pdf.add_page()
+            client_info = data.get('client', {})
+            full_reference_number = data.get('referenceNumber', "FinancialOffer_NoRef")
+            display_reference = full_reference_number.split('_')[-1] if '_' in full_reference_number else full_reference_number
+            sanitized_reference = sanitize_text(display_reference)
+            sanitized_client_name = sanitize_text(client_info.get('name', 'N/A'))
+            sanitized_client_address = sanitize_text(client_info.get('address', 'N/A'))
 
-        pdf.set_font('Arial', 'B', 11)
-        pdf.cell(pdf.get_string_width("Ref: ") + 1, 7, "Ref: ", 0, 0, 'L')
-        pdf.set_font('Arial', '', 11)
-        pdf.cell(0, 7, sanitized_reference, 0, 1, 'L')
+            pdf.set_font('Arial', 'B', 11)
+            pdf.cell(pdf.get_string_width("Ref: ") + 1, 7, "Ref: ", 0, 0, 'L')
+            pdf.set_font('Arial', '', 11)
+            pdf.cell(0, 7, sanitized_reference, 0, 1, 'L')
+            
+            label_width = 20
+            available_width = pdf.w - pdf.l_margin - pdf.r_margin
+            value_width = available_width - label_width
+
+            pdf.set_font('Arial', 'B', 11)
+            pdf.cell(label_width, 7, "Client:", 0, 0, 'L')
+            pdf.set_font('Arial', '', 11)
+            pdf.multi_cell(value_width, 7, sanitized_client_name, 0, 'L', ln=1)
+
+            pdf.set_font('Arial', 'B', 11)
+            pdf.cell(label_width, 7, "Address:", 0, 0, 'L')
+            pdf.set_font('Arial', '', 11)
+            pdf.multi_cell(value_width, 7, sanitized_client_address, 0, 'L', ln=1)
+            pdf.ln(10)
+            
+            draw_boq_content(pdf, data, sections, visible_price_groups, sheet_data['items'])
         
-        label_width = 20
-        available_width = pdf.w - pdf.l_margin - pdf.r_margin
-        value_width = available_width - label_width
-
-        pdf.set_font('Arial', 'B', 11)
-        pdf.cell(label_width, 7, "Client:", 0, 0, 'L')
-        pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(value_width, 7, sanitized_client_name, 0, 'L', ln=1)
-
-        pdf.set_font('Arial', 'B', 11)
-        pdf.cell(label_width, 7, "Address:", 0, 0, 'L')
-        pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(value_width, 7, sanitized_client_address, 0, 'L', ln=1)
-        pdf.ln(10)
-        
-        draw_boq_content(pdf, data, sections, visible_price_groups)
-        draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, is_local_only)
+        # Draw summary only after the last sheet
+        draw_financial_summary_rows_for_boq(pdf, data, sections, visible_price_groups, financial_labels, all_items, is_local_only)
         
         if words_usd_text or words_bdt_text:
             pdf.ln(5)
@@ -752,7 +766,7 @@ def generate_financial_offer_pdf(data, auth_dir, header_color_hex):
                 pdf.multi_cell(0, 5, sanitize_text(note_text), 0, 'L')
 
 
-    add_tnc_to_pdf(pdf, data.get('terms_and_conditions', ''))
+    add_tnc_to_pdf(pdf, data.get('tncState', {}).get('value', ''))
     
     pdf.set_auto_page_break(False)
     signature_image_path = os.path.join(auth_dir, 'Signature_RIF.png')
