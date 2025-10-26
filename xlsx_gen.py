@@ -363,8 +363,8 @@ def draw_financial_summary_for_boq(ws, data, visible_price_sections, header_row_
                 number_format_overrides={'foreign': bdt_format}
             )
 
-def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
-    user_info, items = data.get('user', {}), data.get('items', [])
+def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only, items):
+    user_info = data.get('user', {})
     visible_columns = data.get('visibleColumns', {})
     user_role = user_info.get('role', 'user')
 
@@ -470,7 +470,13 @@ def draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only):
 def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
     wb = Workbook()
     
-    items = data.get('items', [])
+    # MODIFICATION START: Handle sheets
+    sheets_data = data.get('sheets', [])
+    if not sheets_data: # Backward compatibility for old format
+        sheets_data = [{'name': 'BOQ', 'items': data.get('items', [])}]
+    all_items = [item for sheet in sheets_data for item in sheet.get('items', [])]
+    # MODIFICATION END
+
     financials = data.get('financials', {})
 
     is_summary_enabled = data.get('isSummaryPageEnabled', False)
@@ -711,38 +717,52 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
         ws.column_dimensions['C'].width = 25
         ws.column_dimensions['D'].width = 35
 
-        boq_ws = wb.create_sheet("Bill of Quantities")
-        
-        boq_title_cell = boq_ws.cell(row=1, column=1, value="Bill of Quantities")
-        boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
-        boq_title_cell.font = Font(name='Calibri', size=16, bold=True)
-        boq_title_cell.fill = header_fill
-        boq_title_cell.alignment = center_align_wrap
-        boq_ws.append([])
+        for sheet_data in sheets_data:
+            boq_ws = wb.create_sheet(sheet_data['name'])
+            
+            boq_title_cell = boq_ws.cell(row=1, column=1, value=sheet_data['name'])
+            boq_ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
+            boq_title_cell.font = Font(name='Calibri', size=16, bold=True)
+            boq_title_cell.fill = header_fill
+            boq_title_cell.alignment = center_align_wrap
+            boq_ws.append([])
 
-        draw_boq_sheet(boq_ws, data, header_color_hex, financial_labels, is_local_only)
+            draw_boq_sheet(boq_ws, data, header_color_hex, financial_labels, is_local_only, sheet_data['items'])
         
     else:
-        ws = wb.active
-        ws.title = "Financial Offer"
+        # MODIFICATION: Loop through sheets
+        if len(sheets_data) == 1 and sheets_data[0]['name'] == 'BOQ 1':
+            ws = wb.active
+            ws.title = "Financial Offer"
+        else:
+            # Remove default sheet if we have named sheets
+            if 'Sheet' in wb.sheetnames:
+                wb.remove(wb['Sheet'])
+
+        for sheet_data in sheets_data:
+            if len(sheets_data) == 1 and sheets_data[0]['name'] == 'BOQ 1':
+                ws = wb.active
+            else:
+                ws = wb.create_sheet(sheet_data['name'])
+            
+            title_cell = ws.cell(row=1, column=1, value="Financial Offer")
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
+            title_cell.font = Font(name='Calibri', size=16, bold=True)
+            title_cell.fill = header_fill
+            title_cell.alignment = center_align_wrap
+            ws.append([])
+            
+            ws.append(['Ref:', display_reference])
+            ws['A3'].font = bold_font
+            ws.append(['Client:', client_info.get('name', 'N/A')])
+            ws['A4'].font = bold_font
+            ws.append(['Address:', client_info.get('address', 'N/A')])
+            ws['A5'].font = bold_font
+            ws.append([])
+            
+            draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only, sheet_data['items'])
         
-        title_cell = ws.cell(row=1, column=1, value="Financial Offer")
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
-        title_cell.font = Font(name='Calibri', size=16, bold=True)
-        title_cell.fill = header_fill
-        title_cell.alignment = center_align_wrap
-        ws.append([])
-        
-        ws.append(['Ref:', display_reference])
-        ws['A3'].font = bold_font
-        ws.append(['Client:', client_info.get('name', 'N/A')])
-        ws['A4'].font = bold_font
-        ws.append(['Address:', client_info.get('address', 'N/A')])
-        ws['A5'].font = bold_font
-        ws.append([])
-        
-        draw_boq_sheet(ws, data, header_color_hex, financial_labels, is_local_only)
-        
+        ws = wb.worksheets[-1] # Add summary to the last sheet
         current_row_idx = ws.max_row + 2
         
         max_col_for_merge = ws.max_column
@@ -780,7 +800,7 @@ def generate_financial_offer_xlsx(data, auth_dir, header_color_hex):
             ws.merge_cells(start_row=current_row_idx, start_column=1, end_row=current_row_idx, end_column=ws.max_column)
             ws.cell(current_row_idx, 1).alignment = Alignment(wrap_text=True)
 
-    add_tnc_to_excel(wb, data.get('terms_and_conditions', ''), header_color_hex, auth_dir, data)
+    add_tnc_to_excel(wb, data.get('tncState', {}).get('value', ''), header_color_hex, auth_dir, data)
     
     if 'Financial Summary' in wb.sheetnames:
         wb.active = wb['Financial Summary']
